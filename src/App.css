@@ -907,3 +907,161 @@ body {
   margin-top: 20px;
   background: rgba(255, 255, 255, 0.01);
 }
+
+/* DAW Workstation Styles */
+.daw-workspace {
+  display: flex;
+  flex-direction: column;
+  background: #020015;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+  overflow: hidden;
+  margin-top: 15px;
+}
+
+.daw-transport-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.daw-timeline-container {
+  display: flex;
+  flex-direction: column;
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.daw-track-row {
+  display: flex;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.daw-track-controls {
+  width: 250px;
+  min-width: 250px;
+  background: rgba(6, 4, 30, 0.7);
+  border-right: 1px solid rgba(255,255,255,0.06);
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.daw-track-controls-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.daw-track-controls-header strong {
+  font-size: 0.85rem;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.daw-track-timeline {
+  flex-grow: 1;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.01),
+    rgba(255, 255, 255, 0.01) 49px,
+    rgba(255, 255, 255, 0.03) 50px
+  );
+  position: relative;
+  height: 120px;
+  overflow: hidden;
+}
+
+.daw-timeline-ruler {
+  display: flex;
+  background: rgba(0,0,0,0.3);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  height: 25px;
+  padding-left: 250px;
+}
+
+.daw-ruler-marker {
+  font-family: monospace;
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  width: 50px;
+  border-left: 1px solid rgba(255,255,255,0.1);
+  padding-left: 4px;
+  height: 100%;
+}
+
+.daw-track-buttons-row {
+  display: flex;
+  gap: 8px;
+}
+
+.daw-track-btn {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--text-dim);
+  padding: 3px 8px;
+  font-size: 0.7rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--font-family);
+  font-weight: bold;
+}
+
+.daw-track-btn.active.mute {
+  background: rgba(255, 59, 48, 0.2);
+  color: #ff3b30;
+  border-color: #ff3b30;
+}
+
+.daw-track-btn.active.solo {
+  background: rgba(255, 183, 0, 0.2);
+  color: #ffb700;
+  border-color: #ffb700;
+}
+
+.daw-track-btn.active.rec {
+  background: rgba(255, 59, 48, 0.3);
+  color: #ff3b30;
+  border-color: #ff3b30;
+  animation: pulse-red 1.5s infinite;
+}
+
+@keyframes pulse-red {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.daw-track-slider-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.daw-track-slider-group label {
+  width: 25px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.daw-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #ff00c1;
+  box-shadow: 0 0 8px #ff00c1;
+  z-index: 10;
+  pointer-events: none;
+}
+

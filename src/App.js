@@ -22,6 +22,7 @@ import CommunityFeed from './screens/CommunityFeed';
 import CreatorDashboard from './screens/CreatorDashboard';
 import UpgradeScreen from './screens/Shop';
 import CheckoutScreen from './screens/CheckoutScreen';
+import WorkstationScreen from './screens/Workstation';
 
 // Helper to check if Firebase is configured with real credentials
 const isFirebaseConfigured = auth && auth.app && auth.app.options && auth.app.options.apiKey && auth.app.options.apiKey !== "YOUR_API_KEY";
@@ -383,6 +384,8 @@ function App() {
         return <UpgradeScreen {...props} />;
       case 'Checkout':
         return <CheckoutScreen {...props} />;
+      case 'Workstation':
+        return <WorkstationScreen {...props} />;
       default:
         return user ? <HomeNexus {...props} /> : <AuthPortal {...props} />;
     }
@@ -401,6 +404,7 @@ function App() {
           <button className={screen === 'CollaborationLobby' ? 'active' : ''} onClick={() => navigate('CollaborationLobby')}>Lab</button>
           <button className={screen === 'CommunityFeed' ? 'active' : ''} onClick={() => navigate('CommunityFeed')}>Feed</button>
           <button className={screen === 'Profile' ? 'active' : ''} onClick={() => navigate('Profile')}>Profile</button>
+          <button className={screen === 'Workstation' ? 'active' : ''} onClick={() => navigate('Workstation')}>DAW</button>
           {userData.tier === 'Creator' && (
             <button className={screen === 'CreatorDashboard' ? 'active' : ''} onClick={() => navigate('CreatorDashboard')}>Dashboard</button>
           )}
