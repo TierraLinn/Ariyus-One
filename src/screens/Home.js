@@ -1,14 +1,15 @@
 import React from 'react';
 import VoiceSignatureCard from '../components/VoiceSignatureCard';
 
-const HomeNexus = ({ userData, communityFeed, navigate }) => {
+const HomeNexus = ({ userData, communityFeed, navigate, activeChallenge, handleAcceptChallenge }) => {
   if (!userData) return null;
 
   const {
     displayName = 'Aura Singer',
     tier = 'Free',
     xp = 120,
-    voiceSignature = null
+    voiceSignature = null,
+    completedChallenges = []
   } = userData;
 
   // Ariyus Journey Levels
@@ -25,8 +26,8 @@ const HomeNexus = ({ userData, communityFeed, navigate }) => {
   const rankProgress = totalRankRange > 0 ? ((xp - currentLevelInfo.minXp) / totalRankRange) * 100 : 100;
 
   const activeChallenges = [
-    { id: 'ch1', title: 'Cosmic Breath', desc: 'Sustain any vowel at 432 Hz for 6 seconds', reward: '100 XP' },
-    { id: 'ch2', title: 'Harmonic Alignment', desc: 'Score A+ on any Solfeggio guided track', reward: '150 XP' }
+    { id: 'ch1', title: 'Cosmic Breath', desc: 'Sustain any vowel at 432 Hz for 6 seconds', reward: '100 XP', xpVal: 100 },
+    { id: 'ch2', title: 'Harmonic Alignment', desc: 'Score A+ on any Solfeggio guided track', reward: '150 XP', xpVal: 150 }
   ];
 
   return (
@@ -89,22 +90,60 @@ const HomeNexus = ({ userData, communityFeed, navigate }) => {
       <div className="glass-panel">
         <h3 style={{ textShadow: '0 0 10px rgba(255,255,255,0.2)', marginBottom: '15px' }}>Alignment Challenges</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '15px' }}>
-          {activeChallenges.map((ch) => (
-            <div key={ch.id} className="glass-panel" style={{ margin: 0, background: 'rgba(0,0,0,0.15)', borderColor: 'rgba(255,255,255,0.05)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <b style={{ color: '#fff' }}>{ch.title}</b>
-                <span style={{ color: 'var(--primary-glow)', fontSize: '0.85rem' }}>+{ch.reward}</span>
-              </div>
-              <p style={{ fontSize: '0.9rem', color: 'var(--text-dim)', marginBottom: '12px' }}>{ch.desc}</p>
-              <button 
-                className="glowing-button" 
-                style={{ padding: '6px 16px', fontSize: '0.8rem', margin: 0 }}
-                onClick={() => navigate('SongLibrary')}
+          {activeChallenges.map((ch) => {
+            const isCompleted = completedChallenges.includes(ch.id);
+            const isActive = activeChallenge === ch.id;
+
+            return (
+              <div 
+                key={ch.id} 
+                className="glass-panel" 
+                style={{ 
+                  margin: 0, 
+                  background: isCompleted ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0,0,0,0.15)', 
+                  borderColor: isActive ? 'var(--primary-glow)' : isCompleted ? 'rgba(0, 255, 135, 0.2)' : 'rgba(255,255,255,0.05)',
+                  boxShadow: isActive ? '0 0 12px var(--primary-glow)44' : '',
+                  opacity: isCompleted ? 0.75 : 1
+                }}
               >
-                Accept Challenge
-              </button>
-            </div>
-          ))}
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <b style={{ color: isCompleted ? '#00ff87' : '#fff' }}>
+                    {isCompleted ? '✓ ' : ''}{ch.title}
+                  </b>
+                  <span style={{ color: isCompleted ? '#00ff87' : 'var(--primary-glow)', fontSize: '0.85rem' }}>
+                    {isCompleted ? 'COMPLETED' : `+${ch.reward}`}
+                  </span>
+                </div>
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-dim)', marginBottom: '12px' }}>{ch.desc}</p>
+                
+                {isCompleted ? (
+                  <button 
+                    className="glowing-button" 
+                    style={{ padding: '6px 16px', fontSize: '0.8rem', margin: 0, background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.1)', color: 'var(--text-dim)', cursor: 'not-allowed', textShadow: 'none' }}
+                    disabled
+                  >
+                    Alignment Calibrated
+                  </button>
+                ) : isActive ? (
+                  <button 
+                    className="glowing-button" 
+                    style={{ padding: '6px 16px', fontSize: '0.8rem', margin: 0, borderColor: 'var(--primary-glow)', color: 'var(--primary-glow)', boxShadow: '0 0 10px var(--primary-glow)' }}
+                    onClick={() => navigate('SongLibrary')}
+                  >
+                    ⚡ Enter Studio & Align
+                  </button>
+                ) : (
+                  <button 
+                    className="glowing-button secondary" 
+                    style={{ padding: '6px 16px', fontSize: '0.8rem', margin: 0 }}
+                    onClick={() => handleAcceptChallenge(ch.id)}
+                  >
+                    Accept Challenge
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 

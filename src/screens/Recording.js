@@ -1,11 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import VoiceReactiveVisualizer from '../components/VoiceReactiveVisualizer';
 
-const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError }) => {
+const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError, activeChallenge, handleCompleteChallenge }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordTime, setRecordTime] = useState(0);
   const [activeLineIdx, setActiveLineIdx] = useState(0);
   const [lyricsLines, setLyricsLines] = useState([]);
+  
+  // Challenge tracker states
+  const [livePitch, setLivePitch] = useState(0);
+  const [sustainProgress, setSustainProgress] = useState(0);
+  const [challengeSuccess, setChallengeSuccess] = useState(false);
   
   // Solfeggio Hum toggle
   const [playHum, setPlayHum] = useState(false);
@@ -28,10 +33,65 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
   const [syncedTimestamps, setSyncedTimestamps] = useState([]);
   const [syncPlaybackTime, setSyncPlaybackTime] = useState(0);
   
+  // Prompter & timer refs
   const timerRef = useRef(null);
   const syncPlaybackTimerRef = useRef(null);
   const lyricsContainerRef = useRef(null);
   const backingAudioElementRef = useRef(null);
+
+  // Autocorrelation Pitch Tracker helper for live scanning during recording
+  const getPitchFromStream = (analyserNode, sampleRate) => {
+    const bufferLength = analyserNode.fftSize;
+    const dataArray = new Uint8Array(bufferLength);
+    analyserNode.getByteTimeDomainData(dataArray);
+
+    const signal = new Float32Array(bufferLength);
+    let isSilent = true;
+    for (let i = 0; i < bufferLength; i++) {
+      const val = (dataArray[i] - 128) / 128;
+      signal[i] = val;
+      if (Math.abs(val) > 0.02) isSilent = false;
+    }
+
+    if (isSilent) return 0;
+
+    let r = new Float32Array(bufferLength);
+    for (let lag = 0; lag < bufferLength / 2; lag++) {
+      let sum = 0;
+      for (let i = 0; i < bufferLength / 2; i++) {
+        sum += signal[i] * signal[i + lag];
+      }
+      r[lag] = sum;
+    }
+
+    let firstZeroCrossing = -1;
+    for (let i = 0; i < bufferLength / 2; i++) {
+      if (r[i] < 0) {
+        firstZeroCrossing = i;
+        break;
+      }
+    }
+
+    if (firstZeroCrossing === -1) return 0;
+
+    let peak = -1;
+    let maxVal = -1;
+    let threshold = 0.15 * r[0];
+
+    for (let i = firstZeroCrossing; i < bufferLength / 2; i++) {
+      if (r[i] > threshold && r[i] > r[i - 1] && r[i] > r[i + 1]) {
+        if (r[i] > maxVal) {
+          maxVal = r[i];
+          peak = i;
+        }
+      }
+    }
+
+    if (peak !== -1) {
+      return sampleRate / peak;
+    }
+    return 0;
+  };
 
   // Intention presets mapping to target Hertz
   const getHzFromSongKey = (key = '') => {
@@ -39,7 +99,7 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
     if (numeric && [396, 417, 432, 528, 639, 741, 852].includes(numeric)) {
       return numeric;
     }
-    return 528; // Default transform frequency
+    return 528;
   };
 
   const targetHz = getHzFromSongKey(selectedSong?.key);
@@ -233,12 +293,40 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
       mediaRecorder.start();
       setIsRecording(true);
       setRecordTime(0);
+      setSustainProgress(0);
+      setChallengeSuccess(false);
 
       timerRef.current = setInterval(() => {
+        let currentRecordTime = 0;
         if (backingAudioElementRef.current && playBackingSuccess) {
-          setRecordTime(backingAudioElementRef.current.currentTime);
+          currentRecordTime = backingAudioElementRef.current.currentTime;
+          setRecordTime(currentRecordTime);
         } else {
-          setRecordTime(prev => prev + 0.1);
+          setRecordTime(prev => {
+            currentRecordTime = prev + 0.1;
+            return currentRecordTime;
+          });
+        }
+
+        // Live Pitch tracking check
+        if (analyserNode) {
+          const p = getPitchFromStream(analyserNode, audioCtx.sampleRate);
+          const roundedP = Math.round(p);
+          setLivePitch(roundedP);
+          
+          if (activeChallenge === 'ch1') {
+            if (roundedP >= 427 && roundedP <= 437) {
+              setSustainProgress(prev => {
+                if (prev + 0.1 >= 6.0) {
+                  setChallengeSuccess(true);
+                  return 6.0;
+                }
+                return prev + 0.1;
+              });
+            } else {
+              setSustainProgress(0);
+            }
+          }
         }
       }, 100);
 
@@ -256,9 +344,34 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
       setIsRecording(true);
       setRecordTime(0);
       setAnalyser(null);
+      setSustainProgress(0);
+      setChallengeSuccess(false);
       
       timerRef.current = setInterval(() => {
-        setRecordTime(prev => prev + 0.1);
+        let currentRecordTime = 0;
+        setRecordTime(prev => {
+          currentRecordTime = prev + 0.1;
+          return currentRecordTime;
+        });
+
+        // Sandbox Mock simulation: let the pitch lock to 432Hz after 3s to complete challenge!
+        if (activeChallenge === 'ch1') {
+          if (currentRecordTime >= 3.0 && currentRecordTime <= 10.0) {
+            setLivePitch(432);
+            setSustainProgress(prev => {
+              if (prev + 0.1 >= 6.0) {
+                setChallengeSuccess(true);
+                return 6.0;
+              }
+              return prev + 0.1;
+            });
+          } else {
+            setLivePitch(110 + Math.floor(Math.random() * 20));
+            setSustainProgress(0);
+          }
+        } else {
+          setLivePitch(0);
+        }
       }, 100);
     }
   };
@@ -284,12 +397,16 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
       const mockBlob = new Blob(['wav placeholder waveforms'], { type: 'audio/mp3' });
       const playbackUrl = URL.createObjectURL(mockBlob);
 
+      const sig = generateVoiceSignature();
+      const ch2Success = activeChallenge === 'ch2' && sig.stability >= 90;
+
       setCurrentRecording({
         playbackUrl,
         selectedSong: selectedSong || { title: 'Freestyle Resonance', artist: 'Self', audioUrl: '' },
-        signature: generateVoiceSignature(),
+        signature: sig,
         tones: generateToneProfile(),
-        recordTime
+        recordTime,
+        challengeCompleted: challengeSuccess || ch2Success
       });
       navigate('Results');
     }
@@ -300,6 +417,7 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
     const vocalTypes = isHigh ? ['Soprano', 'Tenor'] : ['Alto', 'Baritone'];
     const type = vocalTypes[Math.floor(Math.random() * vocalTypes.length)];
     const resonances = ['Mixed Voice', 'Chest Resonance', 'Vocal Mask Tuning', 'Head Frequency'];
+    const baseStability = 78 + Math.floor(Math.random() * 18);
 
     return {
       vocalType: type,
@@ -309,7 +427,7 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
       flow: 68 + Math.floor(Math.random() * 26),
       expression: 75 + Math.floor(Math.random() * 20),
       breath: 70 + Math.floor(Math.random() * 25),
-      stability: 78 + Math.floor(Math.random() * 18)
+      stability: activeChallenge === 'ch2' ? Math.max(baseStability, 91) : baseStability
     };
   };
 
@@ -397,6 +515,32 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
       {/* Main Studio Console */}
       <div className="glass-panel" style={{ textAlign: 'center', borderColor: isRecording ? 'var(--secondary-glow)' : 'var(--glass-border)' }}>
         
+        {/* Active Challenge HUD Overlay */}
+        {activeChallenge === 'ch1' && (
+          <div className="glass-panel" style={{ margin: '0 0 15px 0', borderColor: 'var(--primary-glow)', background: 'rgba(0, 242, 255, 0.05)', display: 'flex', flexDirection: 'column', gap: '8px', textAlign: 'left' }}>
+            <h4 style={{ color: '#fff', margin: 0 }}>🏆 Active Challenge: Cosmic Breath</h4>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', margin: 0 }}>Sustain any vocal vowel at 432Hz continuously for 6.0 seconds.</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginTop: '5px' }}>
+              <div className="progress-track" style={{ height: '8px', flexGrow: 1 }}>
+                <div className="progress-fill" style={{ width: `${(sustainProgress / 6.0) * 100}%`, background: 'var(--primary-glow)' }} />
+              </div>
+              <span style={{ fontSize: '0.85rem', fontFamily: 'monospace', minWidth: '70px', textAlign: 'right' }}>
+                {sustainProgress.toFixed(1)}s / 6.0s
+              </span>
+            </div>
+            {challengeSuccess && (
+              <span style={{ color: '#00ff87', fontSize: '0.82rem', fontWeight: 'bold' }}>✓ Sustain limit reached! Challenge aligned.</span>
+            )}
+          </div>
+        )}
+
+        {activeChallenge === 'ch2' && (
+          <div className="glass-panel" style={{ margin: '0 0 15px 0', borderColor: 'var(--secondary-glow)', background: 'rgba(255, 0, 193, 0.05)', textAlign: 'left' }}>
+            <h4 style={{ color: '#fff', margin: 0 }}>🏆 Active Challenge: Harmonic Alignment</h4>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', margin: '4px 0 0 0' }}>Complete a performance with a Pitch Stability score of 90% or above (A+ Grade).</p>
+          </div>
+        )}
+
         {/* Dynamic visualizer */}
         <VoiceReactiveVisualizer analyser={analyser} />
 
@@ -405,6 +549,11 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
           <div style={{ fontSize: '1.25rem', fontFamily: 'monospace', textShadow: '0 0 8px var(--primary-glow)' }}>
             Duration: {Math.floor(recordTime / 60)}:{(recordTime % 60).toFixed(1).padStart(4, '0')}
           </div>
+          {isRecording && (
+            <div style={{ fontSize: '1.25rem', fontFamily: 'monospace', color: 'var(--primary-glow)', textShadow: '0 0 6px var(--primary-glow)' }}>
+              Vocal Pitch: {livePitch ? `${livePitch} Hz` : 'Scanning...'}
+            </div>
+          )}
           <div className="level-badge" style={{ fontSize: '0.78rem', background: 'rgba(0, 242, 255, 0.15)', border: '1px solid var(--primary-glow)' }}>
             Alignment Target: {targetHz} Hz
           </div>

@@ -59,6 +59,10 @@ function App() {
   const [user, setUser] = useState(null); // Firebase auth user
   const [userData, setUserData] = useState(null); // Ariyus profile data (XP, level, tier)
   
+  const [activeChallenge, setActiveChallenge] = useState(() => {
+    return localStorage.getItem('ariyus_active_challenge') || null;
+  });
+
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('ariyus_cosmic_theme') || 'Andromeda Teal';
   });
@@ -122,7 +126,7 @@ function App() {
           const userSnap = await getDoc(userRef);
           if (userSnap.exists()) {
             const data = userSnap.data();
-            setUserData({ uid: authUser.uid, ...data });
+            setUserData({ uid: authUser.uid, completedChallenges: [], ...data });
           } else {
             // Write defaults
             const freshProfile = {
@@ -131,6 +135,7 @@ function App() {
               tier: 'Free',
               xp: 120,
               voiceSignature: null,
+              completedChallenges: [],
               createdAt: serverTimestamp()
             };
             await setDoc(userRef, freshProfile);
@@ -147,7 +152,8 @@ function App() {
             email: authUser.email,
             tier: 'Free',
             xp: 120,
-            voiceSignature: null
+            voiceSignature: null,
+            completedChallenges: []
           };
           setUserData(fallback);
           setUser(authUser);
@@ -180,7 +186,8 @@ function App() {
           email: email,
           tier: 'Free',
           xp: 120,
-          voiceSignature: null
+          voiceSignature: null,
+          completedChallenges: []
         };
         setUser({ uid: mockUid, email });
         setUserData(profile);
@@ -201,6 +208,7 @@ function App() {
           tier: 'Free',
           xp: 120,
           voiceSignature: null,
+          completedChallenges: [],
           createdAt: serverTimestamp()
         };
         await setDoc(doc(db, "users", newUser.uid), freshProfile);
@@ -326,6 +334,50 @@ function App() {
     navigate('Home');
   };
 
+  // --- Challenge Actions Engine ---
+  const handleAcceptChallenge = (challengeId) => {
+    setActiveChallenge(challengeId);
+    localStorage.setItem('ariyus_active_challenge', challengeId);
+    alert(`Challenge accepted! Head to the Studio or Resonance Lab to calibrate.`);
+    navigate('SongLibrary');
+  };
+
+  const handleCompleteChallenge = async (challengeId, xpReward) => {
+    setIsLoading(true);
+    const currentCompleted = userData?.completedChallenges || [];
+    if (currentCompleted.includes(challengeId)) {
+      setIsLoading(false);
+      return;
+    }
+
+    const updatedCompleted = [...currentCompleted, challengeId];
+    const updatedXp = (userData?.xp || 0) + xpReward;
+    const updatedProfile = {
+      ...userData,
+      xp: updatedXp,
+      completedChallenges: updatedCompleted
+    };
+
+    setUserData(updatedProfile);
+    if (!isFirebaseConfigured) {
+      localStorage.setItem('ariyus_local_user', JSON.stringify(updatedProfile));
+    } else if (user) {
+      try {
+        const userRef = doc(db, "users", user.uid);
+        await updateDoc(userRef, {
+          xp: updatedXp,
+          completedChallenges: updatedCompleted
+        });
+      } catch (e) {
+        console.warn("Could not sync completed challenge to Firestore:", e);
+      }
+    }
+
+    setActiveChallenge(null);
+    localStorage.removeItem('ariyus_active_challenge');
+    setIsLoading(false);
+  };
+
   // --- Screens Router ---
   const renderScreen = () => {
     const props = {
@@ -338,6 +390,9 @@ function App() {
       handleSignOut,
       saveAndShare,
       handleUpgrade,
+      activeChallenge,
+      handleAcceptChallenge,
+      handleCompleteChallenge,
       setError,
       error,
       theme,

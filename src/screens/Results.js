@@ -38,7 +38,7 @@ const drawChakraNode = (ctx, x, y, score, color, index, voiceVolumeFactor) => {
   ctx.restore();
 };
 
-const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userData }) => {
+const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userData, activeChallenge, handleCompleteChallenge }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   
@@ -1082,6 +1082,12 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
 
       await addDoc(collection(db, "recordings"), recordingData);
 
+      // Trigger challenge completion if successful!
+      if (currentRecording?.challengeCompleted && activeChallenge) {
+        const reward = activeChallenge === 'ch1' ? 100 : 150;
+        await handleCompleteChallenge(activeChallenge, reward);
+      }
+
       const addedXp = 80;
       const updatedXp = (userData?.xp || 0) + addedXp;
 
@@ -1091,7 +1097,8 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
           email: userData?.email || user.email,
           tier: userData?.tier || 'Free',
           xp: updatedXp,
-          voiceSignature: signature
+          voiceSignature: signature,
+          completedChallenges: userData?.completedChallenges || []
         });
       }
 
@@ -1102,6 +1109,12 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
     } catch (err) {
       console.warn("Cloud upload failed, falling back locally:", err);
       setIsUploading(false);
+
+      // Trigger challenge completion locally if successful!
+      if (currentRecording?.challengeCompleted && activeChallenge) {
+        const reward = activeChallenge === 'ch1' ? 100 : 150;
+        await handleCompleteChallenge(activeChallenge, reward);
+      }
       
       saveAndShare({
         song: currentRecording?.selectedSong || { title: 'Freestyle Resonance', artist: 'Self' },
@@ -1391,6 +1404,27 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       
       {/* Title */}
       <h2 style={{ textShadow: '0 0 10px var(--primary-glow)', margin: 0 }}>Ariyus ARC-5 Chamber</h2>
+
+      {/* Challenge Completed Victory HUD */}
+      {currentRecording?.challengeCompleted && activeChallenge && (
+        <div className="glass-panel" style={{ 
+          background: 'linear-gradient(135deg, rgba(6, 4, 30, 0.85), rgba(0, 242, 255, 0.15))', 
+          borderColor: 'var(--primary-glow)', 
+          textAlign: 'center', 
+          boxShadow: '0 0 20px var(--primary-glow)',
+          padding: '20px'
+        }}>
+          <h2 style={{ color: '#fff', margin: 0, textShadow: '0 0 12px var(--primary-glow)' }}>
+            🏆 ALIGNMENT CHALLENGE COMPLETED!
+          </h2>
+          <p style={{ color: '#00ff87', fontWeight: 'bold', fontSize: '1.1rem', margin: '8px 0' }}>
+            Aligned with {activeChallenge === 'ch1' ? 'Cosmic Breath (432Hz sustain)' : 'Harmonic Alignment (A+ pitch stability)'}
+          </p>
+          <p style={{ margin: '5px 0 0 0', color: 'var(--text-dim)' }}>
+            XP Reward: <span style={{ color: 'var(--primary-glow)', fontWeight: 'bold' }}>+{activeChallenge === 'ch1' ? 100 : 150} XP</span> will be claimed upon saving & sharing.
+          </p>
+        </div>
+      )}
 
       {/* Audio Playback Controls */}
       <div className="glass-panel" style={{ textAlign: 'center', borderColor: 'var(--primary-glow)' }}>
