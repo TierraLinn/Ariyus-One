@@ -82,6 +82,15 @@ const WorkstationScreen = ({ userData, navigate }) => {
   const [limiterActive, setLimiterActive] = useState(true);
   const [selectedResonance, setSelectedResonance] = useState(528);
 
+  // --- Master EQ States & Refs ---
+  const [eqBass, setEqBass] = useState(0);
+  const [eqMid, setEqMid] = useState(0);
+  const [eqTreble, setEqTreble] = useState(0);
+
+  const eqBassRef = useRef(null);
+  const eqMidRef = useRef(null);
+  const eqTrebleRef = useRef(null);
+
   // --- Web Audio Graph Refs ---
   const audioCtxRef = useRef(null);
   const activeSourcesRef = useRef({});
@@ -125,10 +134,47 @@ const WorkstationScreen = ({ userData, navigate }) => {
       // Create master gain
       masterGainRef.current = audioCtxRef.current.createGain();
       masterGainRef.current.gain.setValueAtTime((masterVolume / 100) * 0.8, audioCtxRef.current.currentTime);
-      masterGainRef.current.connect(audioCtxRef.current.destination);
+      
+      // Create Master EQ filters
+      eqBassRef.current = audioCtxRef.current.createBiquadFilter();
+      eqBassRef.current.type = 'lowshelf';
+      eqBassRef.current.frequency.setValueAtTime(100, audioCtxRef.current.currentTime);
+      eqBassRef.current.gain.setValueAtTime(eqBass, audioCtxRef.current.currentTime);
+
+      eqMidRef.current = audioCtxRef.current.createBiquadFilter();
+      eqMidRef.current.type = 'peaking';
+      eqMidRef.current.frequency.setValueAtTime(1000, audioCtxRef.current.currentTime);
+      eqMidRef.current.Q.setValueAtTime(1.0, audioCtxRef.current.currentTime);
+      eqMidRef.current.gain.setValueAtTime(eqMid, audioCtxRef.current.currentTime);
+
+      eqTrebleRef.current = audioCtxRef.current.createBiquadFilter();
+      eqTrebleRef.current.type = 'highshelf';
+      eqTrebleRef.current.frequency.setValueAtTime(8000, audioCtxRef.current.currentTime);
+      eqTrebleRef.current.gain.setValueAtTime(eqTreble, audioCtxRef.current.currentTime);
+
+      // Connect: masterGain -> bass -> mid -> treble -> destination
+      masterGainRef.current.connect(eqBassRef.current);
+      eqBassRef.current.connect(eqMidRef.current);
+      eqMidRef.current.connect(eqTrebleRef.current);
+      eqTrebleRef.current.connect(audioCtxRef.current.destination);
     }
     return audioCtxRef.current;
   };
+
+  // Sync Master EQ values dynamically
+  useEffect(() => {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+    if (eqBassRef.current) {
+      eqBassRef.current.gain.setValueAtTime(eqBass, ctx.currentTime);
+    }
+    if (eqMidRef.current) {
+      eqMidRef.current.gain.setValueAtTime(eqMid, ctx.currentTime);
+    }
+    if (eqTrebleRef.current) {
+      eqTrebleRef.current.gain.setValueAtTime(eqTreble, ctx.currentTime);
+    }
+  }, [eqBass, eqMid, eqTreble]);
 
   // Sync master volume fader
   useEffect(() => {
@@ -436,6 +482,28 @@ const WorkstationScreen = ({ userData, navigate }) => {
       limiter.release.setValueAtTime(0.08, offlineCtx.currentTime);
       limiter.connect(offlineCtx.destination);
 
+      // Master EQ in Offline Context
+      const offlineBass = offlineCtx.createBiquadFilter();
+      offlineBass.type = 'lowshelf';
+      offlineBass.frequency.setValueAtTime(100, offlineCtx.currentTime);
+      offlineBass.gain.setValueAtTime(eqBass, offlineCtx.currentTime);
+
+      const offlineMid = offlineCtx.createBiquadFilter();
+      offlineMid.type = 'peaking';
+      offlineMid.frequency.setValueAtTime(1000, offlineCtx.currentTime);
+      offlineMid.Q.setValueAtTime(1.0, offlineCtx.currentTime);
+      offlineMid.gain.setValueAtTime(eqMid, offlineCtx.currentTime);
+
+      const offlineTreble = offlineCtx.createBiquadFilter();
+      offlineTreble.type = 'highshelf';
+      offlineTreble.frequency.setValueAtTime(8000, offlineCtx.currentTime);
+      offlineTreble.gain.setValueAtTime(eqTreble, offlineCtx.currentTime);
+
+      // Connect: EQ Chain -> Limiter
+      offlineBass.connect(offlineMid);
+      offlineMid.connect(offlineTreble);
+      offlineTreble.connect(limiter);
+
       setMixdownProgress(40);
 
       // Mix track buffers to offline contexts
@@ -451,7 +519,7 @@ const WorkstationScreen = ({ userData, navigate }) => {
         if (pannerNode.pan) pannerNode.pan.setValueAtTime(t.pan, offlineCtx.currentTime);
 
         gainNode.connect(pannerNode);
-        pannerNode.connect(limiter);
+        pannerNode.connect(offlineBass);
 
         if (t.buffer) {
           const source = offlineCtx.createBufferSource();
@@ -487,7 +555,7 @@ const WorkstationScreen = ({ userData, navigate }) => {
         droneRight.connect(merger, 0, 1);
         
         merger.connect(droneGain);
-        droneGain.connect(limiter);
+        droneGain.connect(offlineBass);
 
         droneLeft.start(0);
         droneRight.start(0);
@@ -595,14 +663,58 @@ const WorkstationScreen = ({ userData, navigate }) => {
 
             {/* Limiter Toggle */}
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Brickwall Limiter:</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Limiter:</span>
               <button 
                 className={`daw-track-btn ${limiterActive ? 'active solo' : ''}`}
                 onClick={() => setLimiterActive(!limiterActive)}
                 style={{ fontSize: '0.65rem', padding: '2px 6px' }}
               >
-                {limiterActive ? 'ACTIVE' : 'OFF'}
+                {limiterActive ? 'ON' : 'OFF'}
               </button>
+            </div>
+
+            {/* Master EQ Console */}
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', background: 'rgba(255, 255, 255, 0.04)', padding: '5px 12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--primary-glow)', fontWeight: 'bold' }}>Master EQ:</span>
+              
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>Chest (Bass):</span>
+                <input 
+                  type="range" 
+                  min="-12" max="12" step="0.5"
+                  value={eqBass} 
+                  onChange={e => setEqBass(parseFloat(e.target.value))} 
+                  className="slider-input" 
+                  style={{ width: '60px', height: '4px' }} 
+                />
+                <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', width: '38px', textAlign: 'right' }}>{eqBass > 0 ? `+${eqBass}` : eqBass}dB</span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>Heart (Mid):</span>
+                <input 
+                  type="range" 
+                  min="-12" max="12" step="0.5"
+                  value={eqMid} 
+                  onChange={e => setEqMid(parseFloat(e.target.value))} 
+                  className="slider-input" 
+                  style={{ width: '60px', height: '4px' }} 
+                />
+                <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', width: '38px', textAlign: 'right' }}>{eqMid > 0 ? `+${eqMid}` : eqMid}dB</span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>Throat (Treb):</span>
+                <input 
+                  type="range" 
+                  min="-12" max="12" step="0.5"
+                  value={eqTreble} 
+                  onChange={e => setEqTreble(parseFloat(e.target.value))} 
+                  className="slider-input" 
+                  style={{ width: '60px', height: '4px' }} 
+                />
+                <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', width: '38px', textAlign: 'right' }}>{eqTreble > 0 ? `+${eqTreble}` : eqTreble}dB</span>
+              </div>
             </div>
 
             {/* Solfeggio Resonance overlay */}

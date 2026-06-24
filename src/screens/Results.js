@@ -4,6 +4,40 @@ import { db, storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, setDoc, collection, addDoc } from 'firebase/firestore';
 
+// Helper: draw individual chakra point with glowing outer rings
+const drawChakraNode = (ctx, x, y, score, color, index, voiceVolumeFactor) => {
+  const baseRadius = 5 + (score / 100) * 10;
+  const slowTime = Date.now() / 350;
+  const pulse = baseRadius * (1.0 + Math.sin(slowTime + index * Math.PI / 3.0) * 0.18 * voiceVolumeFactor);
+  
+  ctx.save();
+  // Draw glow rings
+  for (let r = 3; r > 0; r--) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.0;
+    ctx.globalAlpha = (0.12 / r) * (score / 100);
+    ctx.beginPath();
+    ctx.arc(x, y, pulse * r * 1.7, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  
+  // Outer outline
+  ctx.globalAlpha = 0.8;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(x, y, pulse, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Inner solid core
+  ctx.globalAlpha = 1.0;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+};
+
 const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userData }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -92,6 +126,7 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
   const backingAudioElRef = useRef(null);
   const visualizerCanvasRef = useRef(null);
   const soundstageCanvasRef = useRef(null);
+  const chakraCanvasRef = useRef(null);
   const animationFrameRef = useRef(null);
   const pannerOrbitIntervalRef = useRef(null);
 
@@ -640,11 +675,6 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
 
   // Real-Time Canvas Visualizer Loops
   useEffect(() => {
-    if (!isPlaying) {
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-      return;
-    }
-
     // 1. Active Waveform/FFT Visualizer Canvas
     const visualizerCanvas = visualizerCanvasRef.current;
     const vCtx = visualizerCanvas?.getContext('2d');
@@ -665,19 +695,27 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       soundstageCanvas.height = sHeight;
     }
 
+    // 3. Chakra Biofield Canvas
+    const chakraCanvas = chakraCanvasRef.current;
+    const cCtx = chakraCanvas?.getContext('2d');
+    let cWidth = chakraCanvas?.offsetWidth || 300;
+    let cHeight = chakraCanvas?.offsetHeight || 220;
+    if (chakraCanvas) {
+      chakraCanvas.width = cWidth;
+      chakraCanvas.height = cHeight;
+    }
+
     const bufferLength = 128;
     const voiceData = new Uint8Array(bufferLength);
     const backingData = new Uint8Array(bufferLength);
 
     const drawLoop = () => {
-      if (!isPlaying) return;
-
       const voiceAnalyser = voiceAnalyserRef.current;
       const backingAnalyser = backingAnalyserRef.current;
       const ctx = audioCtxRef.current;
 
       let vPitch = 0;
-      if (voiceAnalyser && ctx) {
+      if (isPlaying && voiceAnalyser && ctx) {
         voiceAnalyser.getByteFrequencyData(voiceData);
         backingAnalyser.getByteFrequencyData(backingData);
 
@@ -713,7 +751,7 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
         let sliceWidth = vWidth / bufferLength;
         let x = 0;
         for (let i = 0; i < bufferLength; i++) {
-          let v = backingData[i] / 255;
+          let v = isPlaying ? (backingData[i] / 255) : (0.1 + Math.sin(Date.now() / 300 + i * 0.15) * 0.05);
           let y = vHeight - (v * vHeight * 0.7) - 10;
           if (i === 0) vCtx.moveTo(x, y);
           else vCtx.lineTo(x, y);
@@ -729,7 +767,7 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
         vCtx.beginPath();
         x = 0;
         for (let i = 0; i < bufferLength; i++) {
-          let v = voiceData[i] / 255;
+          let v = isPlaying ? (voiceData[i] / 255) : (0.2 + Math.cos(Date.now() / 400 + i * 0.1) * 0.03);
           let y = vHeight / 2 + (v * vHeight * 0.4) - 20;
           if (i === 0) vCtx.moveTo(x, y);
           else vCtx.lineTo(x, y);
@@ -739,19 +777,17 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
         vCtx.shadowBlur = 0;
 
         // Target Solfeggio Key Vertical line
-        if (ctx) {
-          const targetX = (selectedFreq / 1000) * vWidth;
-          vCtx.strokeStyle = 'rgba(255, 0, 193, 0.7)';
-          vCtx.lineWidth = 1;
-          vCtx.beginPath();
-          vCtx.moveTo(targetX, 0);
-          vCtx.lineTo(targetX, vHeight);
-          vCtx.stroke();
+        const targetX = (selectedFreq / 1000) * vWidth;
+        vCtx.strokeStyle = 'rgba(255, 0, 193, 0.7)';
+        vCtx.lineWidth = 1;
+        vCtx.beginPath();
+        vCtx.moveTo(targetX, 0);
+        vCtx.lineTo(targetX, vHeight);
+        vCtx.stroke();
 
-          vCtx.font = '9px Orbitron, sans-serif';
-          vCtx.fillStyle = 'rgba(255, 0, 193, 0.9)';
-          vCtx.fillText(`TARGET: ${selectedFreq}Hz`, targetX + 5, 15);
-        }
+        vCtx.font = '9px Orbitron, sans-serif';
+        vCtx.fillStyle = 'rgba(255, 0, 193, 0.9)';
+        vCtx.fillText(`TARGET: ${selectedFreq}Hz`, targetX + 5, 15);
       }
 
       // --- Draw Soundstage Grid ---
@@ -779,7 +815,7 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
           sCtx.stroke();
         }
 
-        // Draw resonance coupling lines (glimmering lines voice <-> track, voice <-> solfeggio)
+        // Draw resonance coupling lines
         sCtx.lineWidth = 2;
         sCtx.strokeStyle = `rgba(0, 242, 255, ${0.15 + (convergenceRatio / 100) * 0.4})`;
         sCtx.beginPath();
@@ -819,6 +855,101 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
         });
       }
 
+      // --- Draw Chakra Biofield Lightfield ---
+      if (cCtx) {
+        cCtx.clearRect(0, 0, cWidth, cHeight);
+        
+        cCtx.fillStyle = '#03021a';
+        cCtx.fillRect(0, 0, cWidth, cHeight);
+
+        const cx = cWidth / 2;
+        const cy = cHeight / 2 + 10;
+        const silhouetteHeight = Math.min(cHeight * 0.7, 150);
+
+        let voiceVolumeFactor = 1.0;
+        if (isPlaying && voiceAnalyser) {
+          let sum = 0;
+          for (let i = 0; i < voiceData.length; i++) {
+            sum += voiceData[i];
+          }
+          const avg = sum / voiceData.length;
+          voiceVolumeFactor = 1.0 + (avg / 255.0) * 1.5;
+        } else {
+          voiceVolumeFactor = 1.0 + Math.sin(Date.now() / 450) * 0.1;
+        }
+
+        // Ambient Aura field glow
+        cCtx.save();
+        let dominantColor = '#00f2ff';
+        let maxScore = -1;
+        chakras.forEach(ch => {
+          if (ch.score > maxScore) {
+            maxScore = ch.score;
+            dominantColor = ch.color;
+          }
+        });
+
+        const hexToRgba = (hex, alpha) => {
+          const r = parseInt(hex.slice(1, 3), 16);
+          const g = parseInt(hex.slice(3, 5), 16);
+          const b = parseInt(hex.slice(5, 7), 16);
+          return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        };
+
+        const auraGrad = cCtx.createRadialGradient(cx, cy - 10, 10, cx, cy - 10, silhouetteHeight * 0.9);
+        auraGrad.addColorStop(0, hexToRgba(dominantColor, 0.15 * voiceVolumeFactor));
+        auraGrad.addColorStop(0.5, hexToRgba(dominantColor, 0.05));
+        auraGrad.addColorStop(1, 'rgba(3, 2, 26, 0)');
+        cCtx.fillStyle = auraGrad;
+        cCtx.fillRect(0, 0, cWidth, cHeight);
+        cCtx.restore();
+
+        // Silhouette Body
+        cCtx.save();
+        cCtx.fillStyle = 'rgba(255, 255, 255, 0.06)';
+        cCtx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        cCtx.lineWidth = 1.2;
+        
+        cCtx.beginPath();
+        const headRadius = silhouetteHeight * 0.12;
+        const headY = cy - silhouetteHeight * 0.35;
+        cCtx.arc(cx, headY, headRadius, 0, Math.PI * 2);
+        cCtx.closePath();
+        cCtx.fill();
+        cCtx.stroke();
+        
+        cCtx.beginPath();
+        const neckY = headY + headRadius;
+        cCtx.moveTo(cx, neckY);
+        cCtx.bezierCurveTo(cx - headRadius * 1.2, neckY + 4, cx - headRadius * 2.2, neckY + 12, cx - headRadius * 2.2, cy - silhouetteHeight * 0.08);
+        cCtx.bezierCurveTo(cx - headRadius * 2.2, cy + silhouetteHeight * 0.12, cx - headRadius * 2.6, cy + silhouetteHeight * 0.28, cx - headRadius * 1.8, cy + silhouetteHeight * 0.32);
+        cCtx.bezierCurveTo(cx - headRadius * 1.2, cy + silhouetteHeight * 0.35, cx - headRadius, cy + silhouetteHeight * 0.36, cx, cy + silhouetteHeight * 0.36);
+        cCtx.bezierCurveTo(cx + headRadius, cy + silhouetteHeight * 0.36, cx + headRadius * 1.2, cy + silhouetteHeight * 0.35, cx + headRadius * 1.8, cy + silhouetteHeight * 0.32);
+        cCtx.bezierCurveTo(cx + headRadius * 2.6, cy + silhouetteHeight * 0.28, cx + headRadius * 2.2, cy + silhouetteHeight * 0.12, cx + headRadius * 2.2, cy - silhouetteHeight * 0.08);
+        cCtx.bezierCurveTo(cx + headRadius * 2.2, neckY + 12, cx + headRadius * 1.2, neckY + 4, cx, neckY);
+        cCtx.closePath();
+        cCtx.fill();
+        cCtx.stroke();
+        cCtx.restore();
+
+        // 4 Chakras rendering
+        // Third Eye: Ajna
+        const thirdEyeY = headY - 3;
+        drawChakraNode(cCtx, cx, thirdEyeY, chakras[2].score, chakras[2].color, 0, voiceVolumeFactor);
+
+        // Throat: Vishuddha
+        const throatY = cy - silhouetteHeight * 0.18;
+        drawChakraNode(cCtx, cx, throatY, chakras[0].score, chakras[0].color, 1, voiceVolumeFactor);
+
+        // Heart: Anahata
+        const heartY = cy + silhouetteHeight * 0.02;
+        drawChakraNode(cCtx, cx, heartY, chakras[1].score, chakras[1].color, 2, voiceVolumeFactor);
+
+        // Root: Muladhara
+        const rootY = cy + silhouetteHeight * 0.28;
+        drawChakraNode(cCtx, cx, rootY, chakras[3].score, chakras[3].color, 3, voiceVolumeFactor);
+      }
+
       animationFrameRef.current = requestAnimationFrame(drawLoop);
     };
 
@@ -827,7 +958,7 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [isPlaying, soundstage, selectedFreq, activeEffects, convergenceRatio]);
+  }, [isPlaying, soundstage, selectedFreq, activeEffects, convergenceRatio, chakras]);
 
   // Soundstage mouse dragging handlers
   const handleSoundstageDown = (e) => {
@@ -1021,6 +1152,240 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
     }, 2500);
   };
 
+  const exportVocalAuraCard = () => {
+    const {
+      vocalType = 'Alto',
+      resonanceType = 'Mixed Voice',
+      dominantFreq = '220 Hz',
+      energy = 78,
+      flow = 82,
+      expression = 75,
+      breath = 88,
+      stability = 84
+    } = signature;
+
+    const throatScore = chakras[0].score;
+    const heartScore = chakras[1].score;
+    const thirdEyeScore = chakras[2].score;
+    const rootScore = chakras[3].score;
+
+    const svgWidth = 800;
+    const svgHeight = 1000;
+
+    const svgString = `
+<svg width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Fonts -->
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&amp;family=Inter:wght@300;400;600;700&amp;display=swap');
+      .title { font-family: 'Orbitron', sans-serif; font-weight: 900; fill: #ffffff; }
+      .subtitle { font-family: 'Inter', sans-serif; font-weight: 300; fill: #00f2ff; letter-spacing: 2px; }
+      .label { font-family: 'Orbitron', sans-serif; font-weight: 700; fill: #8892b0; font-size: 14px; text-transform: uppercase; }
+      .value { font-family: 'Orbitron', sans-serif; font-weight: 700; fill: #ffffff; font-size: 16px; }
+      .text-body { font-family: 'Inter', sans-serif; font-weight: 400; fill: #a8b2d1; font-size: 15px; }
+      .badge-text { font-family: 'Orbitron', sans-serif; font-weight: 700; fill: #0a0032; font-size: 14px; }
+      .glow-throat { filter: drop-shadow(0px 0px 8px #00f2ff); }
+      .glow-heart { filter: drop-shadow(0px 0px 8px #00ff87); }
+      .glow-thirdeye { filter: drop-shadow(0px 0px 8px #ff00c1); }
+      .glow-root { filter: drop-shadow(0px 0px 8px #ff3b30); }
+    </style>
+
+    <!-- Gradients -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="800" y2="1000" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#02001a" />
+      <stop offset="50%" stop-color="#060426" />
+      <stop offset="100%" stop-color="#0c0032" />
+    </linearGradient>
+
+    <linearGradient id="cyanGlow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#00f2ff" />
+      <stop offset="100%" stop-color="#00ff87" />
+    </linearGradient>
+
+    <linearGradient id="magentaGlow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ff00c1" />
+      <stop offset="100%" stop-color="#7000ff" />
+    </linearGradient>
+
+    <radialGradient id="auraLeft" cx="10%" cy="20%" r="50%">
+      <stop offset="0%" stop-color="#00f2ff" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#00f2ff" stop-opacity="0" />
+    </radialGradient>
+    
+    <radialGradient id="auraRight" cx="90%" cy="80%" r="50%">
+      <stop offset="0%" stop-color="#ff00c1" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#ff00c1" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="${svgWidth}" height="${svgHeight}" fill="url(#bgGrad)" />
+  <rect width="${svgWidth}" height="${svgHeight}" fill="url(#auraLeft)" />
+  <rect width="${svgWidth}" height="${svgHeight}" fill="url(#auraRight)" />
+
+  <!-- Cosmic Grid Overlay -->
+  <path d="M 0,100 L 800,100 M 0,200 L 800,200 M 0,300 L 800,300 M 0,400 L 800,400 M 0,500 L 800,500 M 0,600 L 800,600 M 0,700 L 800,700 M 0,800 L 800,800 M 0,900 L 800,900" stroke="rgba(255, 255, 255, 0.02)" stroke-width="1" />
+  <path d="M 100,0 L 100,1000 M 200,0 L 200,1000 M 300,0 L 300,1000 M 400,0 L 400,1000 M 500,0 L 500,1000 M 600,0 L 600,1000 M 700,0 L 700,1000" stroke="rgba(255, 255, 255, 0.02)" stroke-width="1" />
+
+  <!-- Outer Glassmorphic Border -->
+  <rect x="25" y="25" width="750" height="950" rx="24" stroke="rgba(255, 255, 255, 0.08)" stroke-width="2" fill="rgba(255, 255, 255, 0.01)" />
+
+  <!-- HEADER -->
+  <text x="60" y="85" class="title" font-size="28" letter-spacing="3">ARIYUS RESONANCE PROFILE</text>
+  <text x="60" y="115" class="subtitle" font-size="13">DIGITAL VOCAL AURA AUTHENTICATION PROFILE</text>
+
+  <!-- Divider -->
+  <line x1="60" y1="140" x2="740" y2="140" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
+
+  <!-- VOCAL SIGNATURE BOX -->
+  <rect x="60" y="170" width="680" height="120" rx="16" fill="rgba(10, 0, 50, 0.4)" stroke="rgba(0, 242, 255, 0.15)" stroke-width="1.5" />
+  
+  <text x="90" y="215" class="label" font-size="12">Vocal Identity</text>
+  <text x="90" y="250" class="title" font-size="24" fill="#00f2ff">${vocalType}</text>
+
+  <text x="320" y="215" class="label" font-size="12">Resonance Node</text>
+  <text x="320" y="250" class="title" font-size="24" fill="#ff00c1">${resonanceType}</text>
+
+  <text x="560" y="215" class="label" font-size="12">Dominant Pitch</text>
+  <text x="560" y="250" class="title" font-size="24" fill="#00ff87">${dominantFreq}</text>
+
+  <!-- VOCAL BIOMARKERS RACK -->
+  <text x="60" y="340" class="title" font-size="18" fill="#ffffff" letter-spacing="1">vocal biomarkers</text>
+  
+  <!-- Stat 1: Energy -->
+  <g transform="translate(60, 360)">
+    <text x="0" y="25" class="label" font-size="13">Vocal Energy</text>
+    <text x="300" y="25" class="value">${energy}%</text>
+    <rect x="0" y="38" width="340" height="10" rx="5" fill="rgba(255, 255, 255, 0.05)" />
+    <rect x="0" y="38" width="${(340 * energy) / 100}" height="10" rx="5" fill="url(#cyanGlow)" />
+  </g>
+
+  <!-- Stat 2: Flow -->
+  <g transform="translate(60, 440)">
+    <text x="0" y="25" class="label" font-size="13">Flow &amp; Rhythm</text>
+    <text x="300" y="25" class="value">${flow}%</text>
+    <rect x="0" y="38" width="340" height="10" rx="5" fill="rgba(255, 255, 255, 0.05)" />
+    <rect x="0" y="38" width="${(340 * flow) / 100}" height="10" rx="5" fill="#00ff87" />
+  </g>
+
+  <!-- Stat 3: Expression -->
+  <g transform="translate(60, 520)">
+    <text x="0" y="25" class="label" font-size="13">Expression &amp; Emotion</text>
+    <text x="300" y="25" class="value">${expression}%</text>
+    <rect x="0" y="38" width="340" height="10" rx="5" fill="rgba(255, 255, 255, 0.05)" />
+    <rect x="0" y="38" width="${(340 * expression) / 100}" height="10" rx="5" fill="url(#magentaGlow)" />
+  </g>
+
+  <!-- Stat 4: Breath -->
+  <g transform="translate(60, 600)">
+    <text x="0" y="25" class="label" font-size="13">Breath Control</text>
+    <text x="300" y="25" class="value">${breath}%</text>
+    <rect x="0" y="38" width="340" height="10" rx="5" fill="rgba(255, 255, 255, 0.05)" />
+    <rect x="0" y="38" width="${(340 * breath) / 100}" height="10" rx="5" fill="#ffb700" />
+  </g>
+
+  <!-- Stat 5: Pitch Stability -->
+  <g transform="translate(60, 680)">
+    <text x="0" y="25" class="label" font-size="13">Pitch Stability</text>
+    <text x="300" y="25" class="value">${stability}%</text>
+    <rect x="0" y="38" width="340" height="10" rx="5" fill="rgba(255, 255, 255, 0.05)" />
+    <rect x="0" y="38" width="${(340 * stability) / 100}" height="10" rx="5" fill="#7000ff" />
+  </g>
+
+  <!-- CHAKRA PROFILE CORES -->
+  <text x="430" y="340" class="title" font-size="18" fill="#ffffff" letter-spacing="1">chakra alignment</text>
+
+  <!-- Chakra 1: Third Eye -->
+  <g transform="translate(430, 360)">
+    <circle cx="20" cy="28" r="16" fill="rgba(255, 0, 193, 0.15)" stroke="#ff00c1" stroke-width="1.5" class="glow-thirdeye" />
+    <text x="14" y="33" font-family="'Orbitron', sans-serif" font-weight="900" font-size="12" fill="#ff00c1">👁</text>
+    <text x="50" y="20" class="label" font-size="12">Third Eye (Ajna)</text>
+    <text x="50" y="36" class="text-body" font-size="12" fill="rgba(255,255,255,0.6)">Frequency stability &amp; cognitive focus</text>
+    <text x="270" y="25" class="value" fill="#ff00c1">${thirdEyeScore}%</text>
+    <line x1="50" y1="46" x2="310" y2="46" stroke="rgba(255,255,255,0.06)" stroke-width="3" />
+    <line x1="50" y1="46" x2="${50 + 260 * (thirdEyeScore / 100)}" y2="46" stroke="#ff00c1" stroke-width="3" />
+  </g>
+
+  <!-- Chakra 2: Throat -->
+  <g transform="translate(430, 440)">
+    <circle cx="20" cy="28" r="16" fill="rgba(0, 242, 255, 0.15)" stroke="#00f2ff" stroke-width="1.5" class="glow-throat" />
+    <text x="14" y="33" font-family="'Orbitron', sans-serif" font-weight="900" font-size="12" fill="#00f2ff">🗣</text>
+    <text x="50" y="20" class="label" font-size="12">Throat (Vishuddha)</text>
+    <text x="50" y="36" class="text-body" font-size="12" fill="rgba(255,255,255,0.6)">Communication clarity &amp; harmonics</text>
+    <text x="270" y="25" class="value" fill="#00f2ff">${throatScore}%</text>
+    <line x1="50" y1="46" x2="310" y2="46" stroke="rgba(255,255,255,0.06)" stroke-width="3" />
+    <line x1="50" y1="46" x2="${50 + 260 * (throatScore / 100)}" y2="46" stroke="#00f2ff" stroke-width="3" />
+  </g>
+
+  <!-- Chakra 3: Heart -->
+  <g transform="translate(430, 520)">
+    <circle cx="20" cy="28" r="16" fill="rgba(0, 255, 135, 0.15)" stroke="#00ff87" stroke-width="1.5" class="glow-heart" />
+    <text x="14" y="33" font-family="'Orbitron', sans-serif" font-weight="900" font-size="12" fill="#00ff87">💚</text>
+    <text x="50" y="20" class="label" font-size="12">Heart (Anahata)</text>
+    <text x="50" y="36" class="text-body" font-size="12" fill="rgba(255,255,255,0.6)">Respiratory coherence &amp; stability</text>
+    <text x="270" y="25" class="value" fill="#00ff87">${heartScore}%</text>
+    <line x1="50" y1="46" x2="310" y2="46" stroke="rgba(255,255,255,0.06)" stroke-width="3" />
+    <line x1="50" y1="46" x2="${50 + 260 * (heartScore / 100)}" y2="46" stroke="#00ff87" stroke-width="3" />
+  </g>
+
+  <!-- Chakra 4: Root -->
+  <g transform="translate(430, 600)">
+    <circle cx="20" cy="28" r="16" fill="rgba(255, 59, 48, 0.15)" stroke="#ff3b30" stroke-width="1.5" class="glow-root" />
+    <text x="14" y="33" font-family="'Orbitron', sans-serif" font-weight="900" font-size="12" fill="#ff3b30">⚓</text>
+    <text x="50" y="20" class="label" font-size="12">Root (Muladhara)</text>
+    <text x="50" y="36" class="text-body" font-size="12" fill="rgba(255,255,255,0.6)">Acoustic grounding &amp; sub-bass</text>
+    <text x="270" y="25" class="value" fill="#ff3b30">${rootScore}%</text>
+    <line x1="50" y1="46" x2="310" y2="46" stroke="rgba(255,255,255,0.06)" stroke-width="3" />
+    <line x1="50" y1="46" x2="${50 + 260 * (rootScore / 100)}" y2="46" stroke="#ff3b30" stroke-width="3" />
+  </g>
+
+  <!-- Alignment Index Indicator -->
+  <g transform="translate(430, 675)">
+    <rect x="0" y="0" width="310" height="55" rx="10" fill="rgba(255, 255, 255, 0.02)" stroke="rgba(255, 255, 255, 0.04)" stroke-width="1" />
+    <text x="15" y="22" font-family="'Orbitron', sans-serif" font-size="10" fill="#8892b0" letter-spacing="1">CONVERGENCE ALIGNMENT INDEX</text>
+    <text x="15" y="44" class="title" font-size="18" fill="#00ff87">PHI HARMONIC (1.618)</text>
+    <text x="270" y="34" class="value" font-size="18" fill="#00ff87">PASS</text>
+  </g>
+
+  <!-- Divider -->
+  <line x1="60" y1="765" x2="740" y2="765" stroke="rgba(255,255,255,0.06)" stroke-width="1" />
+
+  <!-- DETAILED CODES & METRICS -->
+  <g transform="translate(60, 790)">
+    <rect x="0" y="0" width="680" height="110" rx="12" fill="rgba(0, 0, 0, 0.25)" stroke="rgba(255,255,255,0.03)" stroke-width="1" />
+    
+    <text x="20" y="30" class="label" font-size="10" fill="#8892b0">Speech biomarkers parsed</text>
+    <text x="20" y="55" class="value" font-size="15">Jitter: ${biomarkers.jitter}%</text>
+    <text x="20" y="80" class="value" font-size="15">Shimmer: ${biomarkers.shimmer}%</text>
+
+    <text x="240" y="30" class="label" font-size="10" fill="#8892b0">Resonance values</text>
+    <text x="240" y="55" class="value" font-size="15">HNR: ${biomarkers.hnr} dB</text>
+    <text x="240" y="80" class="value" font-size="15">Centroid: ${biomarkers.centroid} Hz</text>
+
+    <text x="460" y="30" class="label" font-size="10" fill="#8892b0">Ariyus encryption hash</text>
+    <text x="460" y="55" font-family="monospace" font-size="11" fill="rgba(255,255,255,0.3)">ARC5_HASH_${(Date.now().toString(16)).toUpperCase()}</text>
+    <text x="460" y="75" font-family="monospace" font-size="10" fill="#00f2ff">TIER: ${userData?.tier || 'Pro Tier'}</text>
+    <text x="460" y="93" font-family="monospace" font-size="9" fill="rgba(255,255,255,0.5)">VERIFICATION SYNCED WITH CLOUD</text>
+  </g>
+
+  <!-- FOOTER -->
+  <text x="400" y="940" text-anchor="middle" font-family="'Orbitron', sans-serif" font-size="11" fill="rgba(255, 255, 255, 0.25)" letter-spacing="1">
+    ARIYUS-ONE BIO-RESONANCE CONSOLE • CLOUD-SECURE IDENT
+  </text>
+</svg>
+    `.trim();
+
+    const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Ariyus-Vocal-Aura-${vocalType}-${resonanceType.replace(/\s+/g, '')}.svg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
@@ -1096,6 +1461,23 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
             <span>← Left Ear</span>
             <span>Spatial Panning Orbit</span>
             <span>Right Ear →</span>
+          </div>
+        </div>
+
+        {/* Chakra Biofield Lightfield Canvas */}
+        <div className="glass-panel" style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <h3>Chakra Biofield Lightfield</h3>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', margin: 0 }}>
+            Visualizing dynamic electromagnetic biofield pulses mapped to voice biomarkers.
+          </p>
+          <div style={{ height: '220px', borderRadius: '10px', overflow: 'hidden', position: 'relative', border: '1px solid rgba(255,255,255,0.06)', background: '#03021a' }}>
+            <canvas 
+              ref={chakraCanvasRef} 
+              style={{ width: '100%', height: '100%' }} 
+            />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'center', fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+            <span>Live Bio-Frequency Field Map</span>
           </div>
         </div>
 
@@ -1200,8 +1582,17 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
         )}
       </div>
 
-      {/* Vocal Digital Signature */}
-      <VoiceSignatureCard signature={signature} />
+      {/* Vocal Digital Signature with Card Export option */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        <VoiceSignatureCard signature={signature} />
+        <button 
+          className="glowing-button secondary" 
+          onClick={exportVocalAuraCard}
+          style={{ width: '100%', margin: 0, padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}
+        >
+          <span>📥 Download Shareable Vocal Aura Card (High-Res SVG)</span>
+        </button>
+      </div>
 
       {/* Mixing Studio Console */}
       <div className="glass-panel">
