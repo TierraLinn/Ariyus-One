@@ -80,7 +80,8 @@ const SongLibrary = ({ navigate, userData }) => {
         key: newKey,
         difficulty: newDifficulty,
         lyrics: newLyrics || 'Vibrate with target resonance...',
-        audioUrl: finalAudioUrl
+        audioUrl: finalAudioUrl,
+        userId: userData?.uid || 'guest_user'
       };
 
       await addDoc(collection(db, "songs"), newSong);
@@ -112,7 +113,8 @@ const SongLibrary = ({ navigate, userData }) => {
         difficulty: newDifficulty,
         lyrics: newLyrics || 'Vibrate with target resonance...',
         audioUrl: finalAudioUrl,
-        isCustom: true
+        isCustom: true,
+        userId: userData?.uid || 'guest_user'
       };
 
       const updatedLocal = [...songs, localNewSong];
