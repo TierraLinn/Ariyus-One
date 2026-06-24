@@ -58,6 +58,31 @@ function App() {
   const [user, setUser] = useState(null); // Firebase auth user
   const [userData, setUserData] = useState(null); // Ariyus profile data (XP, level, tier)
   
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('ariyus_cosmic_theme') || 'Andromeda Teal';
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    localStorage.setItem('ariyus_cosmic_theme', theme);
+    if (theme === 'Supernova Amber') {
+      root.style.setProperty('--primary-glow', '#ffb700');
+      root.style.setProperty('--secondary-glow', '#ff3b30');
+      root.style.setProperty('--tertiary-glow', '#9e00ff');
+      root.style.setProperty('--glass-border', 'rgba(255, 183, 0, 0.25)');
+    } else if (theme === 'Hypergiant Emerald') {
+      root.style.setProperty('--primary-glow', '#00ff87');
+      root.style.setProperty('--secondary-glow', '#7000ff');
+      root.style.setProperty('--tertiary-glow', '#00f2ff');
+      root.style.setProperty('--glass-border', 'rgba(0, 255, 135, 0.25)');
+    } else {
+      root.style.setProperty('--primary-glow', '#00f2ff');
+      root.style.setProperty('--secondary-glow', '#ff00c1');
+      root.style.setProperty('--tertiary-glow', '#7000ff');
+      root.style.setProperty('--glass-border', 'rgba(0, 242, 255, 0.25)');
+    }
+  }, [theme]);
+  
   const [currentRecording, setCurrentRecording] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -314,6 +339,8 @@ function App() {
       handleUpgrade,
       setError,
       error,
+      theme,
+      setTheme,
       ...screenProps
     };
 

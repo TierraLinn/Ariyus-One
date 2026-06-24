@@ -10,7 +10,7 @@ const defaultCatalog = [
   { id: 'ds4', title: 'Rolling in the Deep', artist: 'Adele', genre: 'Soul', mood: 'Emotional', bpm: 105, key: 'C minor', difficulty: 'Hard', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3', lyrics: 'There\'s a fire starting in my heart\nReaching a fever pitch and it\'s bringing me out the dark\nFinally, I can see you crystal clear\nGo ahead and sell me out and I\'ll lay your ship bare' }
 ];
 
-const SongLibrary = ({ navigate }) => {
+const SongLibrary = ({ navigate, userData }) => {
   const [songs, setSongs] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMood, setSelectedMood] = useState('All');
@@ -148,7 +148,18 @@ const SongLibrary = ({ navigate }) => {
           <h2 style={{ textShadow: '0 0 10px var(--primary-glow)', margin: 0 }}>Vocal Catalog</h2>
           <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem', margin: '4px 0 0' }}>Search vocal patterns and Solfeggio guides</p>
         </div>
-        <button className="glowing-button secondary" onClick={() => setShowUploader(!showUploader)} disabled={isUploading}>
+        <button 
+          className="glowing-button secondary" 
+          onClick={() => {
+            if (userData?.tier !== 'Creator') {
+              alert("Creator Membership Required!\n\nYou must upgrade your plan to the Creator tier to register and upload custom backing tracks to the Ariyus Sound Catalog.");
+              navigate('Upgrade');
+            } else {
+              setShowUploader(!showUploader);
+            }
+          }} 
+          disabled={isUploading}
+        >
           {showUploader ? 'Close Uploader' : 'Upload Custom Song'}
         </button>
       </div>

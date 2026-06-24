@@ -39,6 +39,7 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
   const [mixPresets, setMixPresets] = useState([]);
   const [newPresetName, setNewPresetName] = useState('');
   const [isExporting, setIsExporting] = useState(false);
+  const [upgradeModalData, setUpgradeModalData] = useState(null);
 
   // Interactive 2D Soundstage coordinates
   // Nodes: 'voice', 'track', 'solfeggio'
@@ -125,15 +126,15 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
   };
 
   const effectPresets = [
-    { id: 'fx1', name: 'Ring Modulator', desc: 'Locks vocals to Solfeggio carrier wave sidebands.' },
-    { id: 'fx2', name: 'Comb Resonator', desc: 'Adds acoustic feedback delay loop tuned to 1/hz.' },
-    { id: 'fx3', name: 'Acoustic Coupling', desc: 'Music filter dynamically sweeps to track vocal pitch.' },
-    { id: 'fx4', name: 'Binaural Beating', desc: 'Left/Right frequency offsets entrain theta brain waves.' },
-    { id: 'fx5', name: 'Galactic Reverb', desc: 'Passes audio through synthesized room convolver.' },
-    { id: 'fx6', name: 'Warm Harmonics', desc: 'Tube Waveshaper adds rich even-order overtones.' },
-    { id: 'fx7', name: 'Cyber Chorus', desc: 'LFO sweeping delay line doubles vocal presence.' },
-    { id: 'fx8', name: 'Vocal Clarity', desc: 'Highpass filter cuts low rumble below 120Hz.' },
-    { id: 'fx9', name: 'Hyper Bass', desc: 'Low-shelf filter boosts backing track low-end.' }
+    { id: 'fx1', name: 'Ring Modulator', desc: 'Locks vocals to Solfeggio carrier wave sidebands.', premium: false },
+    { id: 'fx2', name: 'Comb Resonator', desc: 'Adds acoustic feedback delay loop tuned to 1/hz.', premium: false },
+    { id: 'fx3', name: 'Acoustic Coupling', desc: 'Music filter dynamically sweeps to track vocal pitch.', premium: false },
+    { id: 'fx4', name: 'Binaural Beating', desc: 'Left/Right frequency offsets entrain theta brain waves.', premium: false },
+    { id: 'fx5', name: 'Galactic Reverb', desc: 'Passes audio through synthesized room convolver.', premium: true },
+    { id: 'fx6', name: 'Warm Harmonics', desc: 'Tube Waveshaper adds rich even-order overtones.', premium: true },
+    { id: 'fx7', name: 'Cyber Chorus', desc: 'LFO sweeping delay line doubles vocal presence.', premium: true },
+    { id: 'fx8', name: 'Vocal Clarity', desc: 'Highpass filter cuts low rumble below 120Hz.', premium: false },
+    { id: 'fx9', name: 'Hyper Bass', desc: 'Low-shelf filter boosts backing track low-end.', premium: false }
   ];
 
   // Helper: Generates a custom algorithmic reverb impulse response buffer
@@ -217,6 +218,58 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       case 852: return 852 / 880.00;
       default: return 1.0;
     }
+  };
+
+  const getCoachFeedback = () => {
+    const feedback = [];
+    if (biomarkers.jitter > 0.7) {
+      feedback.push({
+        type: 'Stability',
+        icon: '🌊',
+        color: '#ff3b30',
+        text: 'Vocal jitter is slightly elevated. Stabilize vocal cord vibration by expanding your lower ribcage and engaging your core during sustain.'
+      });
+    } else {
+      feedback.push({
+        type: 'Stability',
+        icon: '💎',
+        color: '#00ff87',
+        text: 'Vocal pitch stability is superb. Your neural motor control of larynx pitch is aligned and steady.'
+      });
+    }
+
+    if (biomarkers.shimmer > 1.2) {
+      feedback.push({
+        type: 'Dynamics',
+        icon: '⚡',
+        color: '#ffb700',
+        text: 'Elevated shimmer variance detected. Focus on maintaining steady breath flow; avoiding small volume bursts on steady syllables.'
+      });
+    } else {
+      feedback.push({
+        type: 'Dynamics',
+        icon: '🛡️',
+        color: '#00f2ff',
+        text: 'Outstanding volume envelope uniformity. Breath support pressure is completely steady.'
+      });
+    }
+
+    if (biomarkers.hnr < 75) {
+      feedback.push({
+        type: 'Resonance',
+        icon: '🌬️',
+        color: '#ff00c1',
+        text: 'Harmonics-to-noise ratio is lower, indicating airy voice production. Focus nasal resonance forward to brighten overtones.'
+      });
+    } else {
+      feedback.push({
+        type: 'Resonance',
+        icon: '🔔',
+        color: '#00f2ff',
+        text: 'Excellent HNR ratio. Your vocal tone is rich in pure harmonic peaks with negligible breathiness noise.'
+      });
+    }
+    return feedback;
   };
 
   const getPitchFromAnalyser = (analyser, sampleRate) => {
@@ -1102,6 +1155,51 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
         </p>
       </div>
 
+      {/* AI Voice Coach Chamber */}
+      <div className="glass-panel" style={{ position: 'relative', overflow: 'hidden' }}>
+        <h3>AI Voice Coach Analysis</h3>
+        <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', margin: '4px 0 15px' }}>
+          Biological frequency coaching based on diagnostic metrics (Ariyus Pro feature)
+        </p>
+
+        {!(userData?.tier === 'Ariyus Pro' || userData?.tier === 'Creator') ? (
+          <div style={{
+            position: 'absolute',
+            top: 0, left: 0, width: '100%', height: '100%',
+            background: 'rgba(6, 4, 30, 0.85)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 10,
+            textAlign: 'center',
+            padding: '20px'
+          }}>
+            <span style={{ fontSize: '2rem', marginBottom: '8px' }}>🔒</span>
+            <h4 style={{ textShadow: '0 0 8px var(--secondary-glow)' }}>AI Voice Coach Locked</h4>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', maxWidth: '380px', margin: '6px 0 15px' }}>
+              Upgrade to Ariyus Pro to decode biometric vocal feedback, stabilize pitch jitter, and harmonize flow.
+            </p>
+            <button className="glowing-button secondary" onClick={() => navigate('Upgrade')} style={{ margin: 0, padding: '8px 20px', fontSize: '0.8rem' }}>
+              Upgrade to Ariyus Pro
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            {getCoachFeedback().map((item, idx) => (
+              <div key={idx} style={{ display: 'flex', gap: '12px', background: 'rgba(0,0,0,0.15)', padding: '12px 16px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.03)' }}>
+                <span style={{ fontSize: '1.5rem' }}>{item.icon}</span>
+                <div>
+                  <strong style={{ fontSize: '0.85rem', color: item.color, display: 'block', marginBottom: '3px' }}>{item.type} Check</strong>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-dim)', margin: 0, lineHeight: '1.4' }}>{item.text}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Vocal Digital Signature */}
       <VoiceSignatureCard signature={signature} />
 
@@ -1120,48 +1218,99 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
             <input type="range" className="slider-input" min="0" max="100" value={trackVol} onChange={e => setTrackVol(parseInt(e.target.value))} disabled={isDryActive} />
           </div>
 
-          <div className="slider-group">
-            <label><span>Solfeggio Master Volume</span><span>{freqVol}%</span></label>
-            <input type="range" className="slider-input" min="0" max="100" value={freqVol} onChange={e => setFreqVol(parseInt(e.target.value))} disabled={isDryActive} />
-          </div>
-
-          {/* Solfeggio Presets */}
-          <div className="slider-group" style={{ marginTop: '10px' }}>
-            <label><span>Target Solfeggio Key</span><span>{selectedFreq} Hz</span></label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {Object.keys(intentions).map(hz => (
-                <button 
-                  key={hz} 
-                  className={`effect-toggle-btn ${selectedFreq === parseInt(hz) ? 'active' : ''}`}
-                  style={{ padding: '6px 12px', flexGrow: 1, fontSize: '0.85rem' }}
-                  onClick={() => setSelectedFreq(parseInt(hz))}
-                  disabled={isDryActive}
-                >
-                  {hz} Hz
-                </button>
-              ))}
+          {/* Solfeggio Master Volume & Presets with Premium Gating */}
+          <div style={{ position: 'relative', marginTop: '10px', border: !(userData?.tier === 'Ariyus Pro' || userData?.tier === 'Creator') ? '1px dashed rgba(255,255,255,0.1)' : 'none', borderRadius: '10px', padding: !(userData?.tier === 'Ariyus Pro' || userData?.tier === 'Creator') ? '12px' : '0' }}>
+            {!(userData?.tier === 'Ariyus Pro' || userData?.tier === 'Creator') && (
+              <div 
+                onClick={() => setUpgradeModalData({ title: 'Solfeggio Tuning Controls', desc: 'Tune vocal layers to core Solfeggio healing hertz frequencies' })}
+                style={{
+                  position: 'absolute',
+                  top: 0, left: 0, width: '100%', height: '100%',
+                  background: 'rgba(0,0,0,0.5)',
+                  backdropFilter: 'blur(2.5px)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  zIndex: 5,
+                  borderRadius: '10px',
+                  textAlign: 'center',
+                  padding: '10px'
+                }}
+              >
+                <span style={{ fontSize: '1.25rem', marginBottom: '4px' }}>🔒</span>
+                <strong style={{ fontSize: '0.8rem', color: '#fff' }}>Unlock Solfeggio Mix Control</strong>
+                <span style={{ fontSize: '0.68rem', color: 'var(--secondary-glow)' }}>Ariyus Pro Membership Required</span>
+              </div>
+            )}
+            
+            <div className="slider-group" style={{ opacity: (userData?.tier === 'Ariyus Pro' || userData?.tier === 'Creator') ? 1 : 0.4 }}>
+              <label><span>Solfeggio Master Volume</span><span>{freqVol}%</span></label>
+              <input type="range" className="slider-input" min="0" max="100" value={freqVol} onChange={e => setFreqVol(parseInt(e.target.value))} disabled={isDryActive || !(userData?.tier === 'Ariyus Pro' || userData?.tier === 'Creator')} />
             </div>
-            <p style={{ fontSize: '0.85rem', color: 'var(--primary-glow)', marginTop: '6px', fontStyle: 'italic' }}>
-              Intention: {intentions[selectedFreq]}
-            </p>
+
+            {/* Solfeggio Presets */}
+            <div className="slider-group" style={{ marginTop: '15px', opacity: (userData?.tier === 'Ariyus Pro' || userData?.tier === 'Creator') ? 1 : 0.4 }}>
+              <label><span>Target Solfeggio Key</span><span>{selectedFreq} Hz</span></label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {Object.keys(intentions).map(hz => (
+                  <button 
+                    key={hz} 
+                    className={`effect-toggle-btn ${selectedFreq === parseInt(hz) ? 'active' : ''}`}
+                    style={{ padding: '6px 12px', flexGrow: 1, fontSize: '0.85rem' }}
+                    onClick={() => setSelectedFreq(parseInt(hz))}
+                    disabled={isDryActive || !(userData?.tier === 'Ariyus Pro' || userData?.tier === 'Creator')}
+                  >
+                    {hz} Hz
+                  </button>
+                ))}
+              </div>
+              <p style={{ fontSize: '0.85rem', color: 'var(--primary-glow)', marginTop: '6px', fontStyle: 'italic' }}>
+                Intention: {intentions[selectedFreq]}
+              </p>
+            </div>
           </div>
 
           {/* Effects toggling */}
           <div style={{ marginTop: '15px' }}>
             <label style={{ fontSize: '0.85rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Proprietary ARC-5 DSP Modules</label>
             <div className="effects-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
-              {effectPresets.map(fx => (
-                <button 
-                  key={fx.id} 
-                  className={`effect-toggle-btn ${activeEffects.includes(fx.name) ? 'active' : ''}`}
-                  onClick={() => toggleEffect(fx.name)}
-                  disabled={isDryActive}
-                  style={{ padding: '8px 12px', height: 'auto', display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start', textAlign: 'left' }}
-                >
-                  <strong style={{ fontSize: '0.85rem' }}>{fx.name}</strong>
-                  <span style={{ fontSize: '0.68rem', opacity: 0.85, fontWeight: 'normal', lineHeight: '1.3' }}>{fx.desc}</span>
-                </button>
-              ))}
+              {effectPresets.map(fx => {
+                const isLocked = fx.premium && !(userData?.tier === 'Ariyus Pro' || userData?.tier === 'Creator');
+                return (
+                  <button 
+                    key={fx.id} 
+                    className={`effect-toggle-btn ${activeEffects.includes(fx.name) ? 'active' : ''}`}
+                    onClick={() => {
+                      if (isLocked) {
+                        setUpgradeModalData({ title: fx.name, desc: fx.desc });
+                      } else {
+                        toggleEffect(fx.name);
+                      }
+                    }}
+                    disabled={isDryActive}
+                    style={{ 
+                      padding: '8px 12px', 
+                      height: 'auto', 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      gap: '4px', 
+                      alignItems: 'flex-start', 
+                      textAlign: 'left',
+                      position: 'relative',
+                      opacity: isLocked ? 0.65 : 1,
+                      border: isLocked ? '1px dashed rgba(255,255,255,0.15)' : undefined
+                    }}
+                  >
+                    <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong style={{ fontSize: '0.85rem' }}>{fx.name}</strong>
+                      {isLocked && <span>🔒</span>}
+                    </div>
+                    <span style={{ fontSize: '0.68rem', opacity: 0.85, fontWeight: 'normal', lineHeight: '1.3' }}>{fx.desc}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -1218,7 +1367,50 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
           Discard Capture
         </button>
       </div>
-
+      {upgradeModalData && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, width: '100vw', height: '100vh',
+          background: 'rgba(2, 0, 26, 0.85)',
+          backdropFilter: 'blur(10px)',
+          display: 'grid',
+          placeItems: 'center',
+          zIndex: 9999,
+          padding: '20px'
+        }}>
+          <div className="glass-panel" style={{ maxWidth: '480px', textAlign: 'center', borderColor: 'var(--secondary-glow)', boxShadow: '0 0 25px rgba(255,0,193,0.25)' }}>
+            <h3 style={{ textShadow: '0 0 10px var(--secondary-glow)', color: '#fff', justifyContent: 'center' }}>
+              🔒 Pro Audio Matrix Locked
+            </h3>
+            <p style={{ margin: '15px 0', fontSize: '1rem', color: '#fff' }}>
+              You clicked on <b>{upgradeModalData.title}</b>.
+            </p>
+            <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem', lineHeight: '1.5', marginBottom: '20px' }}>
+              Advanced sound resonance filters, dynamic Solfeggio carrier mix layers, and AI Voice Coaching are reserved for members of our premium plans.
+            </p>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button 
+                className="glowing-button secondary" 
+                onClick={() => {
+                  setUpgradeModalData(null);
+                  navigate('Upgrade');
+                }}
+                style={{ margin: 0 }}
+              >
+                Upgrade to Pro
+              </button>
+              <button 
+                className="glowing-button" 
+                onClick={() => setUpgradeModalData(null)}
+                style={{ margin: 0, background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.2)', color: '#fff', textShadow: 'none' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+ 
     </div>
   );
 };

@@ -3,7 +3,7 @@ import VoiceSignatureCard from '../components/VoiceSignatureCard';
 import { db } from '../firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
-const Profile = ({ userData, handleSignOut, navigate }) => {
+const Profile = ({ userData, handleSignOut, navigate, theme, setTheme }) => {
   const [recordings, setRecordings] = useState([]);
   const [playingId, setPlayingId] = useState(null);
   const audioRef = React.useRef(null);
@@ -139,6 +139,67 @@ const Profile = ({ userData, handleSignOut, navigate }) => {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Cosmic Skins Customization Panel */}
+      <div className="glass-panel">
+        <h3>Cosmic UI Skin Selection</h3>
+        <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem', marginBottom: '15px' }}>
+          Select custom orbital visual colors across the app (Ariyus Plus feature)
+        </p>
+
+        <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+          {[
+            { name: 'Andromeda Teal', primary: '#00f2ff', secondary: '#ff00c1', gated: false },
+            { name: 'Supernova Amber', primary: '#ffb700', secondary: '#ff3b30', gated: true },
+            { name: 'Hypergiant Emerald', primary: '#00ff87', secondary: '#7000ff', gated: true }
+          ].map((skin) => {
+            const isGatedAndLocked = skin.gated && tier === 'Free';
+            const isActive = theme === skin.name;
+
+            return (
+              <div
+                key={skin.name}
+                onClick={() => {
+                  if (isGatedAndLocked) {
+                    alert("Ariyus Plus Membership Required!\n\nYou must upgrade your membership to unlock custom premium cosmic theme skins.");
+                    navigate('Upgrade');
+                  } else {
+                    setTheme(skin.name);
+                  }
+                }}
+                style={{
+                  background: 'rgba(0,0,0,0.3)',
+                  border: isActive 
+                    ? '2px solid var(--primary-glow)' 
+                    : '1px solid rgba(255,255,255,0.06)',
+                  borderRadius: '12px',
+                  padding: '15px',
+                  flexGrow: 1,
+                  minWidth: '180px',
+                  cursor: 'pointer',
+                  position: 'relative',
+                  boxShadow: isActive ? '0 0 10px var(--primary-glow)' : 'none',
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                {isGatedAndLocked && (
+                  <div style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '0.85rem' }}>
+                    🔒
+                  </div>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: skin.primary }} />
+                  <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: skin.secondary }} />
+                  <strong style={{ fontSize: '0.9rem', color: '#fff' }}>{skin.name}</strong>
+                </div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                  {skin.gated ? 'Plus/Pro/Creator Plan' : 'Free Default Skin'}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
