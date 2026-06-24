@@ -1,0 +1,30 @@
+.home-screen {
+  padding: 2rem;
+  background-color: #121212;
+  color: white;
+  min-height: 100vh;
+}
+
+.floating-heading {
+  font-size: 3rem;
+  font-weight: bold;
+  animation: float 6s ease-in-out infinite;
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.social-feed, .sample-recordings {
+  margin-bottom: 3rem;
+}
+
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}

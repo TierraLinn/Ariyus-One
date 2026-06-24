@@ -1,0 +1,66 @@
+.recording-studio {
+  padding: 2rem;
+  background-color: #121212;
+  color: white;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.lyrics-area {
+  width: 80%;
+  height: 300px;
+  background-color: #222;
+  border-radius: 15px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  overflow-y: auto;
+  text-align: center;
+  font-size: 1.5rem;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.control-button {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  padding: 1rem 2rem;
+  border-radius: 25px;
+  cursor: pointer;
+  font-size: 1.2rem;
+  margin-right: 2rem;
+  animation: float 4s ease-in-out infinite;
+}
+
+.toggles label {
+  margin: 0 0.5rem;
+}
+
+.visualizer-placeholder {
+  width: 80%;
+  height: 200px;
+  background-color: #222;
+  border-radius: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+}
+
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}

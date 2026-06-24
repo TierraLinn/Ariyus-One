@@ -1,0 +1,55 @@
+.results-screen {
+  padding: 2rem;
+  background-color: #121212;
+  color: white;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.floating-heading {
+  font-size: 3rem;
+  font-weight: bold;
+  animation: float 6s ease-in-out infinite;
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.grades-container {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.grade-card {
+  background-color: #222;
+  padding: 2rem;
+  border-radius: 15px;
+  text-align: center;
+  width: 200px;
+  animation: float 6s ease-in-out infinite;
+}
+
+.grade-card h3 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.grade-card p {
+  font-size: 3rem;
+  font-weight: bold;
+}
+
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}

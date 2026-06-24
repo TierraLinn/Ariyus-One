@@ -1,0 +1,51 @@
+.resonance-lab {
+  padding: 2rem;
+  background-color: #121212;
+  color: white;
+  min-height: 100vh;
+}
+
+.floating-heading {
+  font-size: 3rem;
+  font-weight: bold;
+  animation: float 6s ease-in-out infinite;
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.labs-container {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+}
+
+.lab-card {
+  background-color: #222;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: bold;
+  border-radius: 15px;
+  cursor: pointer;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  animation: float 8s ease-in-out infinite;
+}
+
+.lab-card:hover {
+  transform: translateY(-10px) scale(1.05);
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-15px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}
