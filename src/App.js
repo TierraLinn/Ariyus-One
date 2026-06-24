@@ -8,6 +8,8 @@ import {
   doc, setDoc, getDoc, updateDoc, serverTimestamp 
 } from "firebase/firestore";
 
+
+
 // Import Modular Screens
 import AuthPortal from './screens/AuthPortal';
 import HomeNexus from './screens/Home';

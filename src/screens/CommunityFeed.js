@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { db } from '../firebase';
+import { collection, onSnapshot, doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 
 const defaultCommunityFeed = [
   {
-    id: 'rec_1',
+    id: 'rec_default_1',
     userDisplayName: 'Celeste Vocalist',
     userId: 'celeste',
     timestamp: '2 hours ago',
     song: { title: 'Cosmic Resonance', artist: 'Solfeggio Choir' },
-    playbackUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3', // Sample audios
+    playbackUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
     ariyusRating: 'A+',
     selectedFreq: 528,
     effects: ['Galactic Reverb', 'Vocal Clarity'],
@@ -18,7 +20,7 @@ const defaultCommunityFeed = [
     ]
   },
   {
-    id: 'rec_2',
+    id: 'rec_default_2',
     userDisplayName: 'Solar Tenor',
     userId: 'solar',
     timestamp: '5 hours ago',
@@ -44,43 +46,64 @@ const CommunityFeed = ({ navigate, userData }) => {
   const currentUserId = userData?.uid || 'guest';
 
   useEffect(() => {
-    // Sync with localStorage
-    const saved = localStorage.getItem('ariyus_shared_recordings');
-    if (saved) {
-      // Merge saved user recordings with default catalog
-      const parsed = JSON.parse(saved);
-      // Remove duplicates
-      const filteredDefaults = defaultCommunityFeed.filter(def => !parsed.some(p => p.id === def.id));
-      setFeed([...parsed, ...filteredDefaults]);
-    } else {
-      setFeed(defaultCommunityFeed);
-    }
+    // Setup real-time listener to Firestore recordings
+    const unsubscribe = onSnapshot(collection(db, "recordings"), (querySnapshot) => {
+      const firebaseRecordings = [];
+      querySnapshot.forEach((docSnap) => {
+        firebaseRecordings.push({ id: docSnap.id, ...docSnap.data(), isFirebase: true });
+      });
+
+      // Filter default songs that have matches in Firebase
+      const filteredDefaults = defaultCommunityFeed.filter(def => !firebaseRecordings.some(p => p.id === def.id));
+      setFeed([...firebaseRecordings, ...filteredDefaults]);
+    }, (err) => {
+      console.warn("Firestore recordings listener failed, loading from local catalog:", err);
+      // Fallback local storage
+      const saved = localStorage.getItem('ariyus_shared_recordings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const filteredDefaults = defaultCommunityFeed.filter(def => !parsed.some(p => p.id === def.id));
+        setFeed([...parsed, ...filteredDefaults]);
+      } else {
+        setFeed(defaultCommunityFeed);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  const saveFeedToLocalStorage = (updatedFeed) => {
-    setFeed(updatedFeed);
-    // Persist only newly added/updated ones (non-default or all)
-    localStorage.setItem('ariyus_shared_recordings', JSON.stringify(updatedFeed));
-  };
+  const handleLike = async (item) => {
+    const isLiked = item.likes?.includes(currentUserId);
 
-  const handleLike = (id) => {
-    const updated = feed.map(item => {
-      if (item.id === id) {
-        const likes = item.likes || [];
-        const hasLiked = likes.includes(currentUserId);
-        const updatedLikes = hasLiked 
-          ? likes.filter(uid => uid !== currentUserId) 
-          : [...likes, currentUserId];
-        return { ...item, likes: updatedLikes };
+    if (item.isFirebase) {
+      try {
+        const docRef = doc(db, "recordings", item.id);
+        await updateDoc(docRef, {
+          likes: isLiked ? arrayRemove(currentUserId) : arrayUnion(currentUserId)
+        });
+      } catch (err) {
+        console.warn("Firebase like failed, editing locally:", err);
       }
-      return item;
-    });
-    saveFeedToLocalStorage(updated);
+    } else {
+      // Local fallback logic
+      const updated = feed.map(feedItem => {
+        if (feedItem.id === item.id) {
+          const likes = feedItem.likes || [];
+          const updatedLikes = isLiked 
+            ? likes.filter(uid => uid !== currentUserId) 
+            : [...likes, currentUserId];
+          return { ...feedItem, likes: updatedLikes };
+        }
+        return feedItem;
+      });
+      setFeed(updated);
+      localStorage.setItem('ariyus_shared_recordings', JSON.stringify(updated.filter(i => !i.isFirebase)));
+    }
   };
 
-  const handleAddComment = (e, id) => {
+  const handleAddComment = async (e, item) => {
     e.preventDefault();
-    const commentText = commentInputs[id];
+    const commentText = commentInputs[item.id];
     if (!commentText || !commentText.trim()) return;
 
     const newComment = {
@@ -89,18 +112,31 @@ const CommunityFeed = ({ navigate, userData }) => {
       text: commentText
     };
 
-    const updated = feed.map(item => {
-      if (item.id === id) {
-        return { 
-          ...item, 
-          comments: [...(item.comments || []), newComment] 
-        };
+    if (item.isFirebase) {
+      try {
+        const docRef = doc(db, "recordings", item.id);
+        await updateDoc(docRef, {
+          comments: arrayUnion(newComment)
+        });
+        setCommentInputs(prev => ({ ...prev, [item.id]: '' }));
+      } catch (err) {
+        console.warn("Firebase comment write failed:", err);
       }
-      return item;
-    });
-
-    saveFeedToLocalStorage(updated);
-    setCommentInputs(prev => ({ ...prev, [id]: '' }));
+    } else {
+      // Local fallback
+      const updated = feed.map(feedItem => {
+        if (feedItem.id === item.id) {
+          return { 
+            ...feedItem, 
+            comments: [...(feedItem.comments || []), newComment] 
+          };
+        }
+        return feedItem;
+      });
+      setFeed(updated);
+      localStorage.setItem('ariyus_shared_recordings', JSON.stringify(updated.filter(i => !i.isFirebase)));
+      setCommentInputs(prev => ({ ...prev, [item.id]: '' }));
+    }
   };
 
   const handleCommentInputChange = (id, text) => {
@@ -156,7 +192,8 @@ const CommunityFeed = ({ navigate, userData }) => {
               {/* Header Info */}
               <div className="feed-header">
                 <div>
-                  <b onClick={() => navigate('Profile')}>{item.userDisplayName}</b>
+                  <b>{item.userDisplayName}</b>
+                  {item.isFirebase && <span style={{ display: 'inline-block', marginLeft: '6px', fontSize: '0.65rem', padding: '1px 6px', background: 'var(--primary-glow)', color: '#000', borderRadius: '4px', fontWeight: 'bold' }}>Cloud</span>}
                   <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginTop: '2px' }}>
                     sang <b>{item.song.title}</b>
                   </span>
@@ -192,7 +229,7 @@ const CommunityFeed = ({ navigate, userData }) => {
 
               {/* Feed Actions */}
               <div className="feed-actions">
-                <button className={isLiked ? 'active' : ''} onClick={() => handleLike(item.id)}>
+                <button className={isLiked ? 'active' : ''} onClick={() => handleLike(item)}>
                   ❤️ Like ({item.likes?.length || 0})
                 </button>
                 <button onClick={() => navigate('Recording', { selectedSong: item.song })}>
@@ -212,8 +249,8 @@ const CommunityFeed = ({ navigate, userData }) => {
                 
                 {item.comments && item.comments.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', margin: '5px 0' }}>
-                    {item.comments.map((c) => (
-                      <div key={c.id} className="comment-item">
+                    {item.comments.map((c, index) => (
+                      <div key={c.id || index} className="comment-item">
                         <b style={{ color: 'var(--primary-glow)' }}>{c.user}:</b> <span style={{ color: 'var(--text-dim)' }}>{c.text}</span>
                       </div>
                     ))}
@@ -221,7 +258,7 @@ const CommunityFeed = ({ navigate, userData }) => {
                 )}
 
                 {/* Comment Input */}
-                <form onSubmit={(e) => handleAddComment(e, item.id)} className="comment-input-bar">
+                <form onSubmit={(e) => handleAddComment(e, item)} className="comment-input-bar">
                   <input 
                     type="text" 
                     placeholder="Enter resonance message..." 

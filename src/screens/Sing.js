@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { db, storage } from '../firebase';
+import { collection, addDoc, getDocs } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const defaultCatalog = [
   { id: 'ds1', title: 'Blinding Lights', artist: 'The Weeknd', genre: 'Synthwave', mood: 'Energetic', bpm: 171, key: 'F minor', difficulty: 'Medium', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3', lyrics: 'I been tryna call\nI been on my own for long enough\nMaybe you can show me how to love, maybe\nI going through withdrawals\nYou don\'t even have to do too much\nYou can turn me on with just a touch, baby' },
@@ -15,56 +18,117 @@ const SongLibrary = ({ navigate }) => {
   
   // Custom Song Uploader Form State
   const [showUploader, setShowUploader] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newArtist, setNewArtist] = useState('');
   const [newGenre, setNewGenre] = useState('Pop');
   const [newMood, setNewMood] = useState('Energetic');
   const [newBpm, setNewBpm] = useState(120);
-  const [newKey, setNewKey] = useState('C major');
+  const [newKey, setNewKey] = useState('528Hz');
   const [newDifficulty, setNewDifficulty] = useState('Medium');
   const [newLyrics, setNewLyrics] = useState('');
-  const [selectedFile, setSelectedFile] = useState('');
-  const [newAudioUrl, setNewAudioUrl] = useState('');
+  
+  // Audio upload files state
+  const [audioFile, setAudioFile] = useState(null);
+  const [selectedFileName, setSelectedFileName] = useState('');
+
+  // Load merged list from Firebase and default catalog
+  const loadCatalog = async () => {
+    try {
+      const querySnapshot = await getDocs(collection(db, "songs"));
+      const firebaseSongs = [];
+      querySnapshot.forEach((docSnap) => {
+        firebaseSongs.push({ id: docSnap.id, ...docSnap.data(), isCustom: true });
+      });
+      setSongs([...defaultCatalog, ...firebaseSongs]);
+    } catch (e) {
+      console.warn("Failed to load catalog from Firestore, loading local backups:", e);
+      // Fallback
+      const localSongsStr = localStorage.getItem('ariyus_custom_songs');
+      const localSongs = localSongsStr ? JSON.parse(localSongsStr) : [];
+      setSongs([...defaultCatalog, ...localSongs]);
+    }
+  };
 
   useEffect(() => {
-    // Load local storage custom songs and merge with default catalog
-    const localSongsStr = localStorage.getItem('ariyus_custom_songs');
-    const localSongs = localSongsStr ? JSON.parse(localSongsStr) : [];
-    setSongs([...defaultCatalog, ...localSongs]);
+    loadCatalog();
   }, []);
 
-  const handleUpload = (e) => {
+  const handleUpload = async (e) => {
     e.preventDefault();
     if (!newTitle || !newArtist) return;
 
-    const newSong = {
-      id: 'custom_' + Date.now(),
-      title: newTitle,
-      artist: newArtist,
-      genre: newGenre,
-      mood: newMood,
-      bpm: parseInt(newBpm),
-      key: newKey,
-      difficulty: newDifficulty,
-      lyrics: newLyrics || 'No lyrics provided.',
-      audioUrl: newAudioUrl || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3',
-      isCustom: true
-    };
+    setIsUploading(true);
+    let finalAudioUrl = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3';
+    const songId = 'song_' + Date.now();
 
-    const updatedSongs = [...songs, newSong];
-    setSongs(updatedSongs);
+    try {
+      // 1. Upload backing track to Storage if selected
+      if (audioFile) {
+        const storageRef = ref(storage, `songs/${songId}_${audioFile.name}`);
+        const snapshot = await uploadBytes(storageRef, audioFile);
+        finalAudioUrl = await getDownloadURL(snapshot.ref);
+      }
 
-    // Save custom list only
-    const customList = updatedSongs.filter(s => s.isCustom);
-    localStorage.setItem('ariyus_custom_songs', JSON.stringify(customList));
+      // 2. Save song metadata document to Firestore songs collection
+      const newSong = {
+        title: newTitle,
+        artist: newArtist,
+        genre: newGenre,
+        mood: newMood,
+        bpm: parseInt(newBpm),
+        key: newKey,
+        difficulty: newDifficulty,
+        lyrics: newLyrics || 'Vibrate with target resonance...',
+        audioUrl: finalAudioUrl
+      };
 
-    // Reset Form
-    setNewTitle('');
-    setNewArtist('');
-    setNewLyrics('');
-    setSelectedFile('');
-    setNewAudioUrl('');
-    setShowUploader(false);
+      await addDoc(collection(db, "songs"), newSong);
+
+      setIsUploading(false);
+      alert(`Song "${newTitle}" uploaded to Storage and registered in Firebase catalog successfully!`);
+
+      // Reset & Reload
+      setNewTitle('');
+      setNewArtist('');
+      setNewLyrics('');
+      setAudioFile(null);
+      setSelectedFileName('');
+      setShowUploader(false);
+      loadCatalog();
+
+    } catch (err) {
+      console.warn("Firestore/Storage catalog save failed, falling back locally:", err);
+      setIsUploading(false);
+
+      const localNewSong = {
+        id: songId,
+        title: newTitle,
+        artist: newArtist,
+        genre: newGenre,
+        mood: newMood,
+        bpm: parseInt(newBpm),
+        key: newKey,
+        difficulty: newDifficulty,
+        lyrics: newLyrics || 'Vibrate with target resonance...',
+        audioUrl: finalAudioUrl,
+        isCustom: true
+      };
+
+      const updatedLocal = [...songs, localNewSong];
+      setSongs(updatedLocal);
+      
+      const customOnly = updatedLocal.filter(s => s.isCustom);
+      localStorage.setItem('ariyus_custom_songs', JSON.stringify(customOnly));
+
+      // Reset
+      setNewTitle('');
+      setNewArtist('');
+      setNewLyrics('');
+      setAudioFile(null);
+      setSelectedFileName('');
+      setShowUploader(false);
+    }
   };
 
   const filteredSongs = songs.filter(song => {
@@ -78,13 +142,13 @@ const SongLibrary = ({ navigate }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
-      {/* Header and Add Button */}
+      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
         <div>
           <h2 style={{ textShadow: '0 0 10px var(--primary-glow)', margin: 0 }}>Vocal Catalog</h2>
           <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem', margin: '4px 0 0' }}>Search vocal patterns and Solfeggio guides</p>
         </div>
-        <button className="glowing-button secondary" onClick={() => setShowUploader(!showUploader)}>
+        <button className="glowing-button secondary" onClick={() => setShowUploader(!showUploader)} disabled={isUploading}>
           {showUploader ? 'Close Uploader' : 'Upload Custom Song'}
         </button>
       </div>
@@ -97,38 +161,46 @@ const SongLibrary = ({ navigate }) => {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
               <div>
                 <label style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Song Title</label>
-                <input type="text" placeholder="e.g. Starboy" value={newTitle} onChange={e => setNewTitle(e.target.value)} className="glass-input" required />
+                <input type="text" placeholder="e.g. Starboy" value={newTitle} onChange={e => setNewTitle(e.target.value)} className="glass-input" required disabled={isUploading} />
               </div>
               <div>
                 <label style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Artist</label>
-                <input type="text" placeholder="e.g. The Weeknd" value={newArtist} onChange={e => setNewArtist(e.target.value)} className="glass-input" required />
+                <input type="text" placeholder="e.g. The Weeknd" value={newArtist} onChange={e => setNewArtist(e.target.value)} className="glass-input" required disabled={isUploading} />
               </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
               <div>
                 <label style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Genre</label>
-                <select value={newGenre} onChange={e => setNewGenre(e.target.value)} className="glass-input">
+                <select value={newGenre} onChange={e => setNewGenre(e.target.value)} className="glass-input" disabled={isUploading}>
                   <option>Pop</option><option>Ambient</option><option>Classic Rock</option><option>Indie</option><option>Electronic</option>
                 </select>
               </div>
               <div>
                 <label style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Mood</label>
-                <select value={newMood} onChange={e => setNewMood(e.target.value)} className="glass-input">
+                <select value={newMood} onChange={e => setNewMood(e.target.value)} className="glass-input" disabled={isUploading}>
                   <option>Energetic</option><option>Calm</option><option>Mystical</option><option>Emotional</option>
                 </select>
               </div>
               <div>
                 <label style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>BPM</label>
-                <input type="number" value={newBpm} onChange={e => setNewBpm(e.target.value)} className="glass-input" min="30" max="300" />
+                <input type="number" value={newBpm} onChange={e => setNewBpm(e.target.value)} className="glass-input" min="30" max="300" disabled={isUploading} />
               </div>
               <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Key / Hz</label>
-                <input type="text" placeholder="e.g. A minor" value={newKey} onChange={e => setNewKey(e.target.value)} className="glass-input" />
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Alignment Key / Hz</label>
+                <select value={newKey} onChange={e => setNewKey(e.target.value)} className="glass-input" disabled={isUploading}>
+                  <option value="396Hz">396 Hz (Liberation)</option>
+                  <option value="417Hz">417 Hz (Change)</option>
+                  <option value="432Hz">432 Hz (Cosmic Sync)</option>
+                  <option value="528Hz">528 Hz (DNA Miracle)</option>
+                  <option value="639Hz">639 Hz (Harmonize)</option>
+                  <option value="741Hz">741 Hz (Cleansing)</option>
+                  <option value="852Hz">852 Hz (Cosmic Order)</option>
+                </select>
               </div>
               <div>
                 <label style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Difficulty</label>
-                <select value={newDifficulty} onChange={e => setNewDifficulty(e.target.value)} className="glass-input">
+                <select value={newDifficulty} onChange={e => setNewDifficulty(e.target.value)} className="glass-input" disabled={isUploading}>
                   <option>Easy</option><option>Medium</option><option>Hard</option>
                 </select>
               </div>
@@ -136,34 +208,35 @@ const SongLibrary = ({ navigate }) => {
 
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <label style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Karaoke Lyrics</label>
-              <textarea placeholder="Paste lyrics line by line..." value={newLyrics} onChange={e => setNewLyrics(e.target.value)} className="glass-input" style={{ minHeight: '100px', resize: 'vertical' }} />
+              <textarea placeholder="Paste lyrics line by line..." value={newLyrics} onChange={e => setNewLyrics(e.target.value)} className="glass-input" style={{ minHeight: '100px', resize: 'vertical' }} disabled={isUploading} />
             </div>
 
             <div>
-              <label style={{ fontSize: '0.8rem', color: 'var(--text-dim)', display: 'block', marginBottom: '6px' }}>Instrumental / Audio Track (optional)</label>
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-dim)', display: 'block', marginBottom: '6px' }}>Instrumental / Audio Track File (Upload to Cloud)</label>
               <input 
                 type="file" 
                 accept="audio/*" 
                 onChange={e => {
                   const file = e.target.files[0];
                   if (file) {
-                    setSelectedFile(file.name);
-                    setNewAudioUrl(URL.createObjectURL(file));
+                    setAudioFile(file);
+                    setSelectedFileName(file.name);
                   }
                 }} 
                 style={{ color: 'var(--text-dim)' }} 
+                disabled={isUploading}
               />
-              {selectedFile && <p style={{ fontSize: '0.8rem', color: 'var(--primary-glow)', marginTop: '4px' }}>Loaded: {selectedFile}</p>}
+              {selectedFileName && <p style={{ fontSize: '0.8rem', color: 'var(--primary-glow)', marginTop: '4px' }}>Loaded: {selectedFileName}</p>}
             </div>
 
-            <button type="submit" className="glowing-button" style={{ alignSelf: 'flex-start', marginTop: '10px' }}>
-              Register Song Track
+            <button type="submit" className="glowing-button" style={{ alignSelf: 'flex-start', marginTop: '10px' }} disabled={isUploading}>
+              {isUploading ? 'Registering Sound Matrix...' : 'Register Song Track'}
             </button>
           </form>
         </div>
       )}
 
-      {/* Filters & Search Toolbar */}
+      {/* Filters Toolbar */}
       <div className="glass-panel" style={{ margin: 0, padding: '15px' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center' }}>
           <input 
@@ -192,7 +265,7 @@ const SongLibrary = ({ navigate }) => {
         </div>
       </div>
 
-      {/* Songs Display list */}
+      {/* Songs Grid */}
       <div className="song-grid">
         {filteredSongs.length > 0 ? (
           filteredSongs.map((song) => (
@@ -200,7 +273,7 @@ const SongLibrary = ({ navigate }) => {
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <h3 style={{ fontSize: '1.15rem', color: '#fff', margin: 0 }}>{song.title}</h3>
-                  {song.isCustom && <span className="level-badge" style={{ fontSize: '0.65rem', padding: '2px 6px', background: 'var(--tertiary-glow)' }}>Custom</span>}
+                  {song.isCustom && <span className="level-badge" style={{ fontSize: '0.65rem', padding: '2px 6px', background: 'var(--tertiary-glow)' }}>Cloud</span>}
                 </div>
                 <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem', margin: '4px 0 8px' }}>{song.artist}</p>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', margin: '8px 0' }}>
@@ -215,8 +288,8 @@ const SongLibrary = ({ navigate }) => {
               <div>
                 <div className="song-meta-grid">
                   <span>BPM: {song.bpm}</span>
-                  <span>Key: {song.key}</span>
-                  <span>Difficulty: {song.difficulty}</span>
+                  <span>Scale: {song.key}</span>
+                  <span>Diff: {song.difficulty}</span>
                 </div>
                 <button 
                   className="glowing-button" 

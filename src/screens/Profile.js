@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import VoiceSignatureCard from '../components/VoiceSignatureCard';
+import { db } from '../firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 const Profile = ({ userData, handleSignOut, navigate }) => {
-  const [localRecordings, setLocalRecordings] = useState([]);
+  const [recordings, setRecordings] = useState([]);
   const [playingId, setPlayingId] = useState(null);
   const audioRef = React.useRef(null);
 
@@ -28,14 +30,29 @@ const Profile = ({ userData, handleSignOut, navigate }) => {
 
   useEffect(() => {
     if (!userData) return;
-    // Load saved recordings from localStorage
-    const saved = localStorage.getItem('ariyus_shared_recordings');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      // Filter recordings matching the current user
-      const userRecs = parsed.filter(item => item.userDisplayName === displayName || item.userId === userData.uid);
-      setLocalRecordings(userRecs);
-    }
+
+    const loadUserRecordings = async () => {
+      try {
+        const q = query(collection(db, "recordings"), where("userId", "==", userData.uid));
+        const querySnapshot = await getDocs(q);
+        const userRecs = [];
+        querySnapshot.forEach((docSnap) => {
+          userRecs.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        setRecordings(userRecs);
+      } catch (err) {
+        console.warn("Firestore user recordings load failed, falling back locally:", err);
+        // Fallback local storage
+        const saved = localStorage.getItem('ariyus_shared_recordings');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          const userRecs = parsed.filter(item => item.userDisplayName === displayName || item.userId === userData.uid);
+          setRecordings(userRecs);
+        }
+      }
+    };
+
+    loadUserRecordings();
   }, [displayName, userData]);
 
   const handlePlayToggle = (id, url) => {
@@ -78,7 +95,7 @@ const Profile = ({ userData, handleSignOut, navigate }) => {
             <h2 style={{ fontSize: '1.8rem', margin: 0 }}>
               {displayName} {tier === 'Creator' && <span className="creator-badge">Creator</span>}
             </h2>
-            <p style={{ color: 'var(--text-dim)', margin: '4px 0 0', fontSize: '0.95rem' }}>Resonance node: offline-registered</p>
+            <p style={{ color: 'var(--text-dim)', margin: '4px 0 0', fontSize: '0.95rem' }}>Resonance node: synced</p>
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
             <button className="glowing-button" onClick={() => navigate('Upgrade')} style={{ margin: 0, padding: '8px 16px', fontSize: '0.8rem' }}>
@@ -129,9 +146,9 @@ const Profile = ({ userData, handleSignOut, navigate }) => {
       <div className="glass-panel">
         <h3>Your Saved Tracks</h3>
         
-        {localRecordings.length > 0 ? (
+        {recordings.length > 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '15px' }}>
-            {localRecordings.map((rec) => (
+            {recordings.map((rec) => (
               <div key={rec.id} className="glass-panel" style={{ margin: 0, background: 'rgba(0,0,0,0.15)', padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
                 <div>
                   <b style={{ color: '#fff' }}>{rec.song.title}</b>
@@ -153,7 +170,7 @@ const Profile = ({ userData, handleSignOut, navigate }) => {
           </div>
         ) : (
           <p style={{ margin: '15px 0 0', color: 'var(--text-dim)', fontStyle: 'italic' }}>
-            No tracks saved locally. Open the Studio to record your first performance!
+            No tracks saved in your profile. Open the Studio to record your first performance!
           </p>
         )}
       </div>
