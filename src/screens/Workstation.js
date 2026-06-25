@@ -77,16 +77,227 @@ const writeString = (view, offset, string) => {
   }
 };
 
+// --- Web Audio Dynamic Synthesizer Loop Step Sequencer ---
+const scheduleSynthClip = (ctx, destination, synthType, startTime, duration, startOffset) => {
+  const endTime = startTime + duration;
+  if (startOffset >= endTime) return [];
+
+  const activeNodes = [];
+  const startSchedulingFrom = Math.max(startOffset, startTime);
+  const tempoBpm = 120;
+  const beatDuration = 60 / tempoBpm; // 0.5s
+  
+  let currentBeatTime = startTime;
+  
+  while (currentBeatTime < endTime) {
+    if (currentBeatTime >= startSchedulingFrom) {
+      const scheduleTime = ctx.currentTime + (currentBeatTime - startOffset);
+      
+      if (synthType === 'drums') {
+        const beatIndex = Math.round((currentBeatTime - startTime) / beatDuration) % 4;
+        if (beatIndex === 0 || beatIndex === 2) {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(150, scheduleTime);
+          osc.frequency.exponentialRampToValueAtTime(0.01, scheduleTime + 0.15);
+          gain.gain.setValueAtTime(0.3, scheduleTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, scheduleTime + 0.18);
+          osc.connect(gain);
+          gain.connect(destination);
+          osc.start(scheduleTime);
+          osc.stop(scheduleTime + 0.2);
+          activeNodes.push(osc);
+        } else {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(180, scheduleTime);
+          gain.gain.setValueAtTime(0.12, scheduleTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, scheduleTime + 0.1);
+          osc.connect(gain);
+          gain.connect(destination);
+          osc.start(scheduleTime);
+          osc.stop(scheduleTime + 0.15);
+          activeNodes.push(osc);
+          
+          const bufferSize = ctx.sampleRate * 0.12;
+          const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+          const outputData = noiseBuffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) {
+            outputData[i] = Math.random() * 2 - 1;
+          }
+          const noiseSource = ctx.createBufferSource();
+          noiseSource.buffer = noiseBuffer;
+          const noiseGain = ctx.createGain();
+          noiseGain.gain.setValueAtTime(0.1, scheduleTime);
+          noiseGain.gain.exponentialRampToValueAtTime(0.01, scheduleTime + 0.12);
+          noiseSource.connect(noiseGain);
+          noiseGain.connect(destination);
+          noiseSource.start(scheduleTime);
+          noiseSource.stop(scheduleTime + 0.15);
+          activeNodes.push(noiseSource);
+        }
+      } else if (synthType === 'bass') {
+        const notes = [66, 66, 82.5, 99];
+        const beatIndex = Math.round((currentBeatTime - startTime) / beatDuration) % 4;
+        const freq = notes[beatIndex];
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, scheduleTime);
+        gain.gain.setValueAtTime(0.25, scheduleTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, scheduleTime + 0.4);
+        osc.connect(gain);
+        gain.connect(destination);
+        osc.start(scheduleTime);
+        osc.stop(scheduleTime + 0.45);
+        activeNodes.push(osc);
+      } else if (synthType === 'pads') {
+        const chords = [
+          [264, 330, 396],
+          [297, 352, 445.5],
+          [264, 330, 396],
+          [352, 440, 528]
+        ];
+        const measureIndex = Math.floor((currentBeatTime - startTime) / (beatDuration * 4)) % chords.length;
+        const chordFreqs = chords[measureIndex];
+        chordFreqs.forEach(freq => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, scheduleTime);
+          gain.gain.setValueAtTime(0.0, scheduleTime);
+          gain.gain.linearRampToValueAtTime(0.06, scheduleTime + 0.8);
+          gain.gain.exponentialRampToValueAtTime(0.001, scheduleTime + 1.9);
+          osc.connect(gain);
+          gain.connect(destination);
+          osc.start(scheduleTime);
+          osc.stop(scheduleTime + 2.0);
+          activeNodes.push(osc);
+        });
+      } else if (synthType === 'chimes') {
+        const pattern = [528, 660, 792, 1056];
+        const beatIndex = Math.round((currentBeatTime - startTime) / (beatDuration / 2)) % 8;
+        if (beatIndex < pattern.length) {
+          const freq = pattern[beatIndex];
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, scheduleTime);
+          gain.gain.setValueAtTime(0.08, scheduleTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, scheduleTime + 0.2);
+          osc.connect(gain);
+          gain.connect(destination);
+          osc.start(scheduleTime);
+          osc.stop(scheduleTime + 0.25);
+          activeNodes.push(osc);
+        }
+      }
+    }
+    
+    if (synthType === 'chimes') {
+      currentBeatTime += beatDuration / 2;
+    } else if (synthType === 'pads') {
+      currentBeatTime += beatDuration * 4;
+    } else {
+      currentBeatTime += beatDuration;
+    }
+  }
+  return activeNodes;
+};
+
+// --- Web Audio Crossfading Formant-Preserving Pitch Shifter ---
+const createPitchShifterNode = (ctx, pitchRatio) => {
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  
+  if (Math.abs(pitchRatio - 1.0) < 0.01) {
+    input.connect(output);
+    return { input, output, stop: () => {} };
+  }
+
+  const delayTime = 0.040;
+  const delay1 = ctx.createDelay(0.1);
+  const delay2 = ctx.createDelay(0.1);
+
+  const lfo = ctx.createOscillator();
+  lfo.type = 'sawtooth';
+  lfo.frequency.setValueAtTime(1 / delayTime, ctx.currentTime);
+
+  const lfoGain = ctx.createGain();
+  lfoGain.gain.setValueAtTime(-delayTime * (pitchRatio - 1.0), ctx.currentTime);
+  
+  lfo.connect(lfoGain);
+  lfoGain.connect(delay1.delayTime);
+
+  const lfoShift = ctx.createDelay(0.1);
+  lfoShift.delayTime.setValueAtTime(delayTime / 2, ctx.currentTime);
+  lfoGain.connect(lfoShift);
+  lfoShift.connect(delay2.delayTime);
+
+  const crossfadeOsc = ctx.createOscillator();
+  crossfadeOsc.type = 'triangle';
+  crossfadeOsc.frequency.setValueAtTime(1 / delayTime, ctx.currentTime);
+
+  const gain1 = ctx.createGain();
+  const gain2 = ctx.createGain();
+
+  const shaper1 = ctx.createWaveShaper();
+  const curve1 = new Float32Array(512);
+  for (let i = 0; i < 512; i++) {
+    const x = (i / 255.5) - 1.0;
+    curve1[i] = (x + 1.0) / 2.0;
+  }
+  shaper1.curve = curve1;
+
+  const shaper2 = ctx.createWaveShaper();
+  const curve2 = new Float32Array(512);
+  for (let i = 0; i < 512; i++) {
+    const x = (i / 255.5) - 1.0;
+    curve2[i] = 1.0 - ((x + 1.0) / 2.0);
+  }
+  shaper2.curve = curve2;
+
+  crossfadeOsc.connect(shaper1);
+  shaper1.connect(gain1.gain);
+  crossfadeOsc.connect(shaper2);
+  shaper2.connect(gain2.gain);
+
+  input.connect(delay1);
+  input.connect(delay2);
+  delay1.connect(gain1);
+  delay2.connect(gain2);
+  gain1.connect(output);
+  gain2.connect(output);
+
+  lfo.start();
+  crossfadeOsc.start();
+
+  return {
+    input,
+    output,
+    stop: () => {
+      try { lfo.stop(); } catch(e){}
+      try { crossfadeOsc.stop(); } catch(e){}
+    }
+  };
+};
+
 const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
   const isPaidUser = userData?.tier !== 'Free';
 
   // --- DAW Track States ---
   const [tracks, setTracks] = useState([
-    { id: 1, name: 'Vocal Track 1', type: 'vocal', volume: 80, pan: 0, mute: false, solo: false, isRecording: false, buffer: null, filename: '', fxDelayTime: 0.3, fxDelayFeedback: 30, fxFilterCutoff: 1500, fxFilterType: 'lowpass', fxDistortion: 0, fxExpanded: false },
-    { id: 2, name: 'Backing Instrumental', type: 'backing', volume: 70, pan: 0, mute: false, solo: false, buffer: null, filename: '', fxDelayTime: 0.3, fxDelayFeedback: 30, fxFilterCutoff: 1500, fxFilterType: 'lowpass', fxDistortion: 0, fxExpanded: false },
-    { id: 3, name: 'Solfeggio Osc Drone', type: 'osc', volume: 20, pan: 0, mute: false, solo: false, hz: 528, filename: 'Synth sine carrier', fxDelayTime: 0.3, fxDelayFeedback: 30, fxFilterCutoff: 1500, fxFilterType: 'lowpass', fxDistortion: 0, fxExpanded: false },
-    { id: 4, name: 'Ambient Space Loop', type: 'sfx', volume: 40, pan: 0, mute: false, solo: false, buffer: null, filename: '', fxDelayTime: 0.3, fxDelayFeedback: 30, fxFilterCutoff: 1500, fxFilterType: 'lowpass', fxDistortion: 0, fxExpanded: false }
+    { id: 1, name: 'Vocal Track 1', type: 'vocal', volume: 80, pan: 0, mute: false, solo: false, isRecording: false, clips: [], fxDelayTime: 0.3, fxDelayFeedback: 30, fxFilterCutoff: 1500, fxFilterType: 'lowpass', fxDistortion: 0, fxPitchShift: 0, fxExpanded: false },
+    { id: 2, name: 'Backing Instrumental', type: 'backing', volume: 70, pan: 0, mute: false, solo: false, clips: [], fxDelayTime: 0.3, fxDelayFeedback: 30, fxFilterCutoff: 1500, fxFilterType: 'lowpass', fxDistortion: 0, fxPitchShift: 0, fxExpanded: false },
+    { id: 3, name: 'Solfeggio Osc Drone', type: 'osc', volume: 20, pan: 0, mute: false, solo: false, hz: 528, filename: 'Synth sine carrier', fxDelayTime: 0.3, fxDelayFeedback: 30, fxFilterCutoff: 1500, fxFilterType: 'lowpass', fxDistortion: 0, fxPitchShift: 0, fxExpanded: false },
+    { id: 4, name: 'Ambient Space Loop', type: 'sfx', volume: 40, pan: 0, mute: false, solo: false, clips: [], fxDelayTime: 0.3, fxDelayFeedback: 30, fxFilterCutoff: 1500, fxFilterType: 'lowpass', fxDistortion: 0, fxPitchShift: 0, fxExpanded: false }
   ]);
+
+  // --- Tool States ---
+  const [activeTool, setActiveTool] = useState('select'); // 'select' or 'slice'
+  const draggedClipRef = useRef(null);
 
   // --- Transport States ---
   const [isPlaying, setIsPlaying] = useState(false);
@@ -101,6 +312,7 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [librarySongs, setLibrarySongs] = useState([]);
   const [targetTrackId, setTargetTrackId] = useState(null);
+  const [libraryTab, setLibraryTab] = useState('cover'); // 'cover' or 'synth'
 
   // --- Master EQ States & Refs ---
   const [eqBass, setEqBass] = useState(0);
@@ -147,18 +359,24 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
           const response = await fetch(duetPayload.playbackUrl);
           const arrayBuffer = await response.arrayBuffer();
           const decoded = await ctx.decodeAudioData(arrayBuffer);
+          const duetClip = {
+            id: 'clip_duet',
+            buffer: decoded,
+            name: `Duet: ${duetPayload.userDisplayName}`,
+            startTime: 0,
+            duration: decoded.duration,
+            offset: 0,
+            type: 'audio'
+          };
           setTracks(prev => prev.map(t => {
             if (t.id === 2) {
-              return { ...t, buffer: decoded, name: `Duet: ${duetPayload.userDisplayName}`, filename: duetPayload.song.title };
+              return { ...t, clips: [duetClip], filename: duetPayload.song.title };
             }
             if (t.id === 1) {
               return { ...t, name: 'Your Vocals (Mic)' };
             }
             return t;
           }));
-          setTimeout(() => {
-            drawWaveform(2, decoded);
-          }, 100);
         } catch(e) {
           console.error("Failed to load duet guide vocals:", e);
         }
@@ -172,9 +390,9 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
   const getTimelineDuration = () => {
     let max = 30; // base 30 seconds grid
     tracks.forEach(t => {
-      if (t.buffer) {
-        max = Math.max(max, t.buffer.duration);
-      }
+      t.clips?.forEach(c => {
+        max = Math.max(max, c.startTime + c.duration);
+      });
     });
     return Math.ceil(max);
   };
@@ -311,64 +529,202 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
   }, [tracks, isPlaying]);
 
   // --- Dynamic Waveform Renderer ---
-  const drawWaveform = (trackId, buffer) => {
+  const drawWaveform = (trackId, clips = []) => {
     const canvas = canvasRefs.current[trackId];
     if (!canvas) return;
     const canvasCtx = canvas.getContext('2d');
     const width = canvas.width = canvas.offsetWidth;
     const height = canvas.height = canvas.offsetHeight;
 
-    canvasCtx.fillStyle = 'rgba(7, 6, 48, 0.4)';
+    canvasCtx.fillStyle = 'rgba(7, 6, 48, 0.45)';
     canvasCtx.fillRect(0, 0, width, height);
 
-    if (!buffer) {
-      // Draw empty timeline grid
-      canvasCtx.strokeStyle = 'rgba(255,255,255,0.03)';
-      canvasCtx.lineWidth = 1;
-      for (let i = 50; i < width; i += 50) {
-        canvasCtx.beginPath();
-        canvasCtx.moveTo(i, 0);
-        canvasCtx.lineTo(i, height);
-        canvasCtx.stroke();
-      }
-      return;
+    // Draw timeline vertical grids
+    canvasCtx.strokeStyle = 'rgba(255,255,255,0.03)';
+    canvasCtx.lineWidth = 1;
+    const pxPerSec = width / timelineDuration;
+    for (let sec = 5; sec < timelineDuration; sec += 5) {
+      const x = sec * pxPerSec;
+      canvasCtx.beginPath();
+      canvasCtx.moveTo(x, 0);
+      canvasCtx.lineTo(x, height);
+      canvasCtx.stroke();
     }
 
-    const data = buffer.getChannelData(0);
-    const step = Math.ceil(data.length / width);
-    const amp = height / 2;
+    if (!clips || clips.length === 0) return;
 
-    canvasCtx.lineWidth = 1.5;
-    canvasCtx.strokeStyle = trackId === 1 ? '#00f2ff' : trackId === 2 ? '#ff00c1' : '#00ff87';
-    canvasCtx.shadowBlur = 4;
-    canvasCtx.shadowColor = canvasCtx.strokeStyle;
-    canvasCtx.beginPath();
+    clips.forEach(clip => {
+      const xStart = (clip.startTime / timelineDuration) * width;
+      const xWidth = (clip.duration / timelineDuration) * width;
+      const amp = height / 2;
 
-    for (let i = 0; i < width; i++) {
-      let min = 1.0;
-      let max = -1.0;
-      for (let j = 0; j < step; j++) {
-        const datum = data[i * step + j];
-        if (datum < min) min = datum;
-        if (datum > max) max = datum;
+      // Draw clip frame background
+      canvasCtx.fillStyle = clip.type === 'synth' ? 'rgba(0, 255, 135, 0.08)' : 'rgba(0, 242, 255, 0.08)';
+      canvasCtx.fillRect(xStart, 0, xWidth, height);
+
+      // Draw clip border
+      canvasCtx.strokeStyle = clip.type === 'synth' ? '#00ff87' : trackId === 1 ? '#00f2ff' : '#ff00c1';
+      canvasCtx.lineWidth = 1.5;
+      canvasCtx.strokeRect(xStart, 0, xWidth, height);
+
+      if (clip.buffer) {
+        const data = clip.buffer.getChannelData(0);
+        const sampleRate = clip.buffer.sampleRate;
+        const startIndex = Math.floor(clip.offset * sampleRate);
+        const endIndex = Math.floor((clip.offset + clip.duration) * sampleRate);
+        const bufferLen = endIndex - startIndex;
+
+        if (bufferLen > 0) {
+          const step = Math.ceil(bufferLen / xWidth);
+          canvasCtx.beginPath();
+          canvasCtx.strokeStyle = clip.type === 'synth' ? '#00ff87' : trackId === 1 ? '#00f2ff' : '#ff00c1';
+          
+          for (let i = 0; i < xWidth; i++) {
+            let min = 1.0;
+            let max = -1.0;
+            const startPtr = startIndex + Math.floor(i * step);
+            for (let j = 0; j < step; j++) {
+              const datum = data[startPtr + j];
+              if (datum !== undefined) {
+                if (datum < min) min = datum;
+                if (datum > max) max = datum;
+              }
+            }
+            if (min === 1.0) min = 0;
+            if (max === -1.0) max = 0;
+            
+            canvasCtx.moveTo(xStart + i, (1 + min) * amp);
+            canvasCtx.lineTo(xStart + i, (1 + max) * amp);
+          }
+          canvasCtx.stroke();
+        }
+      } else if (clip.type === 'synth') {
+        canvasCtx.fillStyle = 'rgba(0, 255, 135, 0.4)';
+        const notesCount = 8;
+        const noteW = xWidth / notesCount;
+        for (let i = 0; i < notesCount; i++) {
+          const noteH = 6 + Math.sin(i * 1.5) * 4;
+          const noteY = (height / 2) - (noteH / 2) + Math.cos(i) * 12;
+          canvasCtx.fillRect(xStart + i * noteW + 2, noteY, noteW - 4, noteH);
+        }
       }
-      canvasCtx.moveTo(i, (1 + min) * amp);
-      canvasCtx.lineTo(i, (1 + max) * amp);
-    }
-    canvasCtx.stroke();
-    canvasCtx.shadowBlur = 0;
+
+      // Draw clip label text
+      canvasCtx.font = '8px monospace';
+      canvasCtx.fillStyle = '#fff';
+      canvasCtx.fillText(clip.name, xStart + 5, 12);
+    });
   };
 
-  // Draw initial blank grids
+  // Reactive canvas redraw effect
   useEffect(() => {
     if (isPaidUser) {
       tracks.forEach(t => {
-        if (!t.buffer) drawWaveform(t.id, null);
+        drawWaveform(t.id, t.clips);
       });
     }
-  }, [isPaidUser, tracks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPaidUser, tracks, timelineDuration]);
 
-  // --- Transport Controls ---
+  // --- Interactive Timeline Mouse Coordinates Drag & Split Handlers ---
+  const handleCanvasMouseDown = (trackId, e) => {
+    const canvas = canvasRefs.current[trackId];
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const percent = x / canvas.offsetWidth;
+    const clickTime = percent * timelineDuration;
+
+    const track = tracks.find(tr => tr.id === trackId);
+    if (!track) return;
+
+    const clickedClip = track.clips.find(clip => 
+      clickTime >= clip.startTime && clickTime <= (clip.startTime + clip.duration)
+    );
+
+    if (!clickedClip) return;
+
+    if (activeTool === 'slice') {
+      const splitPoint = clickTime;
+      const duration1 = splitPoint - clickedClip.startTime;
+      const duration2 = clickedClip.duration - duration1;
+
+      if (duration1 < 0.2 || duration2 < 0.2) return;
+
+      const clip1 = {
+        ...clickedClip,
+        id: clickedClip.id + '_s1',
+        duration: duration1
+      };
+
+      const clip2 = {
+        ...clickedClip,
+        id: clickedClip.id + '_s2',
+        startTime: splitPoint,
+        offset: clickedClip.offset + duration1,
+        duration: duration2,
+        name: clickedClip.name + ' (slice)'
+      };
+
+      setTracks(prev => prev.map(tr => {
+        if (tr.id === trackId) {
+          const filteredClips = tr.clips.filter(c => c.id !== clickedClip.id);
+          return {
+            ...tr,
+            clips: [...filteredClips, clip1, clip2]
+          };
+        }
+        return tr;
+      }));
+    } else {
+      draggedClipRef.current = {
+        trackId,
+        clipId: clickedClip.id,
+        initialStartTime: clickedClip.startTime,
+        clickTimelineTime: clickTime
+      };
+    }
+  };
+
+  const handleCanvasMouseMove = (trackId, e) => {
+    if (!draggedClipRef.current) return;
+    const drag = draggedClipRef.current;
+    if (drag.trackId !== trackId) return;
+
+    const canvas = canvasRefs.current[trackId];
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const percent = x / canvas.offsetWidth;
+    const currentTimelineTime = percent * timelineDuration;
+
+    const delta = currentTimelineTime - drag.clickTimelineTime;
+    let nextStartTime = drag.initialStartTime + delta;
+    if (nextStartTime < 0) nextStartTime = 0;
+
+    setTracks(prev => prev.map(tr => {
+      if (tr.id === trackId) {
+        return {
+          ...tr,
+          clips: tr.clips.map(c => {
+            if (c.id === drag.clipId) {
+              return { ...c, startTime: nextStartTime };
+            }
+            return c;
+          })
+        };
+      }
+      return tr;
+    }));
+  };
+
+  const handleCanvasMouseUp = () => {
+    draggedClipRef.current = null;
+  };
+
+  // --- Transport Controls with Multi-Clip Scheduling ---
   const playAll = () => {
     const ctx = getAudioContext();
     if (ctx.state === 'suspended') {
@@ -377,12 +733,10 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
 
     if (isPlaying) return;
 
-    // Schedule sources
     const startOffset = pausedTimeRef.current;
     playbackStartTimeRef.current = ctx.currentTime - startOffset;
 
     tracks.forEach(t => {
-      // 1. Build channel nodes
       const gainNode = ctx.createGain();
       const pannerNode = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
       
@@ -393,7 +747,6 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
       gainNode.gain.setValueAtTime(initialVolume, ctx.currentTime);
       if (pannerNode.pan) pannerNode.pan.setValueAtTime(t.pan, ctx.currentTime);
 
-      // Create track-level FX insert nodes
       const filterNode = ctx.createBiquadFilter();
       filterNode.type = t.fxFilterType || 'lowpass';
       filterNode.frequency.setValueAtTime(t.fxFilterCutoff || 1500, ctx.currentTime);
@@ -410,16 +763,18 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
       const delayFeedbackNode = ctx.createGain();
       delayFeedbackNode.gain.setValueAtTime((t.fxDelayFeedback || 0) / 100, ctx.currentTime);
 
-      // Delay feedback loop
       delayNode.connect(delayFeedbackNode);
       delayFeedbackNode.connect(delayNode);
 
-      // Routing: source -> filter -> distortion -> gainNode (dry) & delayNode -> gainNode (wet)
+      // Pitch shifting
+      const pitchRatio = Math.pow(2, (t.fxPitchShift || 0) / 12);
+      const pitchNode = createPitchShifterNode(ctx, pitchRatio);
+
+      pitchNode.output.connect(filterNode);
       filterNode.connect(distortionNode);
       distortionNode.connect(gainNode);
       distortionNode.connect(delayNode);
       delayNode.connect(gainNode);
-
       gainNode.connect(pannerNode);
       pannerNode.connect(masterGainRef.current);
 
@@ -430,20 +785,34 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
       trackDelayFeedbacksRef.current[t.id] = delayFeedbackNode;
       trackDistortionsRef.current[t.id] = distortionNode;
 
-      // 2. Build sound sources
-      if (t.buffer) {
-        const source = ctx.createBufferSource();
-        source.buffer = t.buffer;
-        source.connect(filterNode);
-        
-        // Start buffer scheduling
-        source.start(0, startOffset);
-        activeSourcesRef.current[t.id] = source;
-      } else if (t.type === 'osc') {
+      // Schedule all active clips on this track
+      t.clips?.forEach(clip => {
+        if (clip.startTime + clip.duration <= startOffset) return;
+
+        if (clip.buffer) {
+          const source = ctx.createBufferSource();
+          source.buffer = clip.buffer;
+          source.connect(pitchNode.input);
+
+          if (startOffset <= clip.startTime) {
+            source.start(ctx.currentTime + (clip.startTime - startOffset), clip.offset, clip.duration);
+          } else {
+            const playedPercent = startOffset - clip.startTime;
+            source.start(ctx.currentTime, clip.offset + playedPercent, clip.duration - playedPercent);
+          }
+          activeSourcesRef.current[clip.id] = source;
+        } else if (clip.type === 'synth') {
+          const nodes = scheduleSynthClip(ctx, pitchNode.input, clip.synthConfig.instrument, clip.startTime, clip.duration, startOffset);
+          activeSourcesRef.current[clip.id] = nodes;
+        }
+      });
+
+      // Legacy Oscillator
+      if (t.type === 'osc') {
         const osc = ctx.createOscillator();
         osc.type = 'sine';
         osc.frequency.setValueAtTime(t.hz, ctx.currentTime);
-        osc.connect(filterNode);
+        osc.connect(pitchNode.input);
         osc.start(0);
         oscNodesRef.current[t.id] = osc;
       }
@@ -451,7 +820,6 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
 
     setIsPlaying(true);
 
-    // Playhead alignment timer
     timelineTimerRef.current = setInterval(() => {
       const elapsed = ctx.currentTime - playbackStartTimeRef.current;
       if (elapsed >= timelineDuration) {
@@ -465,15 +833,20 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
   const pauseAll = () => {
     if (!isPlaying) return;
     clearInterval(timelineTimerRef.current);
-    
     pausedTimeRef.current = currentTime;
     
-    // Stop all active audio nodes
     tracks.forEach(t => {
-      if (activeSourcesRef.current[t.id]) {
-        try { activeSourcesRef.current[t.id].stop(); } catch(e){}
-        delete activeSourcesRef.current[t.id];
-      }
+      t.clips?.forEach(c => {
+        if (activeSourcesRef.current[c.id]) {
+          const nodes = activeSourcesRef.current[c.id];
+          if (Array.isArray(nodes)) {
+            nodes.forEach(n => { try { n.stop(); } catch(e){} });
+          } else {
+            try { nodes.stop(); } catch(e){}
+          }
+          delete activeSourcesRef.current[c.id];
+        }
+      });
       if (oscNodesRef.current[t.id]) {
         try { oscNodesRef.current[t.id].stop(); } catch(e){}
         delete oscNodesRef.current[t.id];
@@ -484,7 +857,6 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
     trackDelaysRef.current = {};
     trackDelayFeedbacksRef.current = {};
     trackDistortionsRef.current = {};
-
     setIsPlaying(false);
   };
 
@@ -492,10 +864,17 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
     clearInterval(timelineTimerRef.current);
     
     tracks.forEach(t => {
-      if (activeSourcesRef.current[t.id]) {
-        try { activeSourcesRef.current[t.id].stop(); } catch(e){}
-        delete activeSourcesRef.current[t.id];
-      }
+      t.clips?.forEach(c => {
+        if (activeSourcesRef.current[c.id]) {
+          const nodes = activeSourcesRef.current[c.id];
+          if (Array.isArray(nodes)) {
+            nodes.forEach(n => { try { n.stop(); } catch(e){} });
+          } else {
+            try { nodes.stop(); } catch(e){}
+          }
+          delete activeSourcesRef.current[c.id];
+        }
+      });
       if (oscNodesRef.current[t.id]) {
         try { oscNodesRef.current[t.id].stop(); } catch(e){}
         delete oscNodesRef.current[t.id];
@@ -522,21 +901,27 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
       try {
         const arrayBuffer = e.target.result;
         const decodedBuffer = await ctx.decodeAudioData(arrayBuffer);
-        
+        const newClip = {
+          id: 'clip_' + Date.now(),
+          buffer: decodedBuffer,
+          name: file.name,
+          startTime: 0,
+          duration: decodedBuffer.duration,
+          offset: 0,
+          type: 'audio'
+        };
+
         setTracks(prev => prev.map(t => {
           if (t.id === trackId) {
-            return { ...t, buffer: decodedBuffer, filename: file.name };
+            return { ...t, clips: [...t.clips, newClip], filename: file.name };
           }
           return t;
         }));
-
-        drawWaveform(trackId, decodedBuffer);
       } catch (err) {
         console.error("Audio decode error:", err);
         alert("Failed to decode audio file. Make sure it is a valid MP3/WAV file.");
       }
     };
-
     reader.readAsArrayBuffer(file);
   };
 
@@ -548,23 +933,57 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
       const response = await fetch(song.audioUrl);
       const arrayBuffer = await response.arrayBuffer();
       const decodedBuffer = await ctx.decodeAudioData(arrayBuffer);
+      const newClip = {
+        id: 'clip_' + Date.now(),
+        buffer: decodedBuffer,
+        name: song.title,
+        startTime: 0,
+        duration: decodedBuffer.duration,
+        offset: 0,
+        type: 'audio'
+      };
       
       setTracks(prev => prev.map(t => {
         if (t.id === trackId) {
-          return { ...t, buffer: decodedBuffer, filename: song.title };
+          return { ...t, clips: [...t.clips, newClip], filename: song.title };
         }
         return t;
       }));
-
-      // Redraw canvas
-      setTimeout(() => {
-        drawWaveform(trackId, decodedBuffer);
-      }, 100);
-      
     } catch(err) {
       console.error("Failed to fetch and decode library audio:", err);
       alert("Failed to load select song buffer. Check network status.");
     }
+  };
+
+  const importSynthClip = (trackId, instrumentName) => {
+    setIsLibraryOpen(false);
+    
+    let clipName = '';
+    if (instrumentName === 'drums') clipName = 'Muladhara Grounding Drum Beat';
+    else if (instrumentName === 'bass') clipName = 'Solfeggio Sub-Bass (528Hz)';
+    else if (instrumentName === 'pads') clipName = 'Anahata Ethereal Pads';
+    else if (instrumentName === 'chimes') clipName = 'Ajna Solar Lead Chimes';
+
+    const newClip = {
+      id: 'synth_' + Date.now(),
+      buffer: null,
+      name: clipName,
+      startTime: 0,
+      duration: 10.0,
+      offset: 0,
+      type: 'synth',
+      synthConfig: { instrument: instrumentName }
+    };
+
+    setTracks(prev => prev.map(t => {
+      if (t.id === trackId) {
+        return {
+          ...t,
+          clips: [...t.clips, newClip]
+        };
+      }
+      return t;
+    }));
   };
 
   // --- Microphone Recording directly to timeline track ---
@@ -573,7 +992,6 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
     if (!track) return;
 
     if (track.isRecording) {
-      // STOP recording
       if (mediaRecorderRef.current) {
         mediaRecorderRef.current.stop();
       }
@@ -582,7 +1000,6 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
       }
       setTracks(prev => prev.map(t => t.id === trackId ? { ...t, isRecording: false } : t));
     } else {
-      // START recording
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         streamRef.current = stream;
@@ -602,21 +1019,28 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
           reader.onload = async (e) => {
             const ctx = getAudioContext();
             const decoded = await ctx.decodeAudioData(e.target.result);
+            const newClip = {
+              id: 'clip_rec_' + Date.now(),
+              buffer: decoded,
+              name: `VocalCapture_${Date.now()}.wav`,
+              startTime: 0,
+              duration: decoded.duration,
+              offset: 0,
+              type: 'audio'
+            };
             
             setTracks(prev => prev.map(t => {
               if (t.id === trackId) {
-                return { ...t, buffer: decoded, filename: `VocalCapture_${Date.now()}.wav` };
+                return { ...t, clips: [...t.clips, newClip], filename: `VocalCapture_${Date.now()}.wav` };
               }
               return t;
             }));
-            drawWaveform(trackId, decoded);
           };
           reader.readAsArrayBuffer(audioBlob);
         };
 
         mediaRecorder.start();
         setTracks(prev => prev.map(t => t.id === trackId ? { ...t, isRecording: true } : t));
-
       } catch (err) {
         console.error("Mic DAW input fail:", err);
         alert("Could not initialize microphone. Please check system permissions.");
@@ -638,7 +1062,6 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
       const OfflineCtxClass = window.OfflineAudioContext || window.webkitOfflineAudioContext;
       const offlineCtx = new OfflineCtxClass(2, sampleRate * renderDuration, sampleRate);
 
-      // Sound Forge Master Chain: Limiter / Compressor Node
       const limiter = offlineCtx.createDynamicsCompressor();
       limiter.threshold.setValueAtTime(limiterActive ? -1.0 : -0.1, offlineCtx.currentTime);
       limiter.knee.setValueAtTime(30, offlineCtx.currentTime);
@@ -647,7 +1070,6 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
       limiter.release.setValueAtTime(0.08, offlineCtx.currentTime);
       limiter.connect(offlineCtx.destination);
 
-      // Master EQ in Offline Context
       const offlineBass = offlineCtx.createBiquadFilter();
       offlineBass.type = 'lowshelf';
       offlineBass.frequency.setValueAtTime(100, offlineCtx.currentTime);
@@ -664,14 +1086,12 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
       offlineTreble.frequency.setValueAtTime(8000, offlineCtx.currentTime);
       offlineTreble.gain.setValueAtTime(eqTreble, offlineCtx.currentTime);
 
-      // Connect: EQ Chain -> Limiter
       offlineBass.connect(offlineMid);
       offlineMid.connect(offlineTreble);
       offlineTreble.connect(limiter);
 
       setMixdownProgress(40);
 
-      // Mix track buffers to offline contexts with insert FX
       tracks.forEach(t => {
         const hasAnySolo = tracks.some(tr => tr.solo);
         let trackGain = (t.volume / 100);
@@ -683,7 +1103,6 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
         const pannerNode = offlineCtx.createStereoPanner ? offlineCtx.createStereoPanner() : offlineCtx.createGain();
         if (pannerNode.pan) pannerNode.pan.setValueAtTime(t.pan, offlineCtx.currentTime);
 
-        // Instantiate FX Nodes in Offline context
         const filterNode = offlineCtx.createBiquadFilter();
         filterNode.type = t.fxFilterType || 'lowpass';
         filterNode.frequency.setValueAtTime(t.fxFilterCutoff || 1500, offlineCtx.currentTime);
@@ -700,33 +1119,30 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
         const delayFeedbackNode = offlineCtx.createGain();
         delayFeedbackNode.gain.setValueAtTime((t.fxDelayFeedback || 0) / 100, offlineCtx.currentTime);
 
-        // Delay feedback loop
         delayNode.connect(delayFeedbackNode);
         delayFeedbackNode.connect(delayNode);
 
-        // Routing: source -> filter -> distortion -> gainNode (dry) & delayNode -> gainNode (wet)
+        const pitchRatio = Math.pow(2, (t.fxPitchShift || 0) / 12);
+        const pitchNode = createPitchShifterNode(offlineCtx, pitchRatio);
+
+        pitchNode.output.connect(filterNode);
         filterNode.connect(distortionNode);
         distortionNode.connect(gainNode);
         distortionNode.connect(delayNode);
         delayNode.connect(gainNode);
-
         gainNode.connect(pannerNode);
         pannerNode.connect(offlineBass);
 
-        if (t.buffer) {
-          const source = offlineCtx.createBufferSource();
-          source.buffer = t.buffer;
-          source.connect(filterNode);
-          source.start(0);
-        } else if (t.type === 'osc') {
-          // Render Solfeggio carrier
-          const osc = offlineCtx.createOscillator();
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(t.hz, offlineCtx.currentTime);
-          osc.connect(filterNode);
-          osc.start(0);
-          osc.stop(renderDuration);
-        }
+        t.clips?.forEach(clip => {
+          if (clip.buffer) {
+            const source = offlineCtx.createBufferSource();
+            source.buffer = clip.buffer;
+            source.connect(pitchNode.input);
+            source.start(clip.startTime, clip.offset, clip.duration);
+          } else if (clip.type === 'synth') {
+            scheduleSynthClip(offlineCtx, pitchNode.input, clip.synthConfig.instrument, clip.startTime, clip.duration, 0);
+          }
+        });
       });
 
       setMixdownProgress(60);
@@ -931,6 +1347,28 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
           </div>
         </div>
 
+        {/* Editing Tools Bar */}
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '8px 12px', borderTop: '1px solid rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Edit Tools:</span>
+          <button 
+            className={`daw-track-btn ${activeTool === 'select' ? 'active solo' : ''}`}
+            onClick={() => setActiveTool('select')}
+            style={{ fontSize: '0.7rem', padding: '4px 10px' }}
+          >
+            🖱 Select & Drag Clip
+          </button>
+          <button 
+            className={`daw-track-btn ${activeTool === 'slice' ? 'active rec' : ''}`}
+            onClick={() => setActiveTool('slice')}
+            style={{ fontSize: '0.7rem', padding: '4px 10px' }}
+          >
+            ✂ Split / Slice Clip
+          </button>
+          <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginLeft: '15px' }}>
+            {activeTool === 'select' ? 'Drag clips horizontally to re-align timing.' : 'Click inside any clip to slice it into two segments.'}
+          </span>
+        </div>
+
         {/* Timeline Grid container */}
         <div className="daw-timeline-container">
           
@@ -1107,12 +1545,32 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
                         style={{ height: '3px' }}
                       />
                     </div>
+
+                    {/* Vocal Key Shift */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'var(--text-dim)' }}>
+                        <span>Vocal Key Shift:</span>
+                        <span>{t.fxPitchShift > 0 ? `+${t.fxPitchShift}` : t.fxPitchShift} semitones</span>
+                      </div>
+                      <input 
+                        type="range" min="-12" max="12" step="1" value={t.fxPitchShift || 0} 
+                        onChange={e => setTracks(prev => prev.map(tr => tr.id === t.id ? { ...tr, fxPitchShift: parseInt(e.target.value) } : tr))}
+                        className="slider-input"
+                        style={{ height: '3px' }}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
 
               {/* Track Right Timeline Waveform */}
-              <div className="daw-track-timeline">
+              <div 
+                className="daw-track-timeline"
+                onMouseDown={(e) => handleCanvasMouseDown(t.id, e)}
+                onMouseMove={(e) => handleCanvasMouseMove(t.id, e)}
+                onMouseUp={handleCanvasMouseUp}
+                onMouseLeave={handleCanvasMouseUp}
+              >
                 {/* Visual Canvas */}
                 <canvas 
                   ref={el => { canvasRefs.current[t.id] = el; }} 
@@ -1149,25 +1607,74 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
           padding: '20px'
         }}>
           <div className="glass-panel" style={{ maxWidth: '500px', width: '100%', borderColor: 'var(--primary-glow)' }}>
-            <h3 style={{ margin: '0 0 5px 0' }}>Select Instrumental to Import</h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', margin: 0 }}>Select a track from the library catalog to load onto the DAW timeline.</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '300px', overflowY: 'auto', margin: '15px 0' }}>
-              {librarySongs.map(song => (
-                <div 
-                  key={song.id} 
-                  className="glass-panel" 
-                  style={{ margin: 0, background: 'rgba(255,255,255,0.02)', padding: '10px 15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-                  onClick={() => importSongFromUrl(targetTrackId, song)}
-                >
-                  <div>
-                    <b style={{ color: '#fff', fontSize: '0.9rem' }}>{song.title}</b>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '4px' }}>{song.artist}</div>
-                  </div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--primary-glow)', fontWeight: 'bold' }}>Import →</span>
-                </div>
-              ))}
+            <h3 style={{ margin: '0 0 5px 0' }}>Sound & Instrument Database</h3>
+            
+            {/* Library Tabs */}
+            <div style={{ display: 'flex', gap: '5px', margin: '12px 0 15px 0', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+              <button 
+                className={`daw-track-btn ${libraryTab === 'cover' ? 'active solo' : ''}`}
+                onClick={() => setLibraryTab('cover')}
+                style={{ fontSize: '0.75rem', padding: '5px 12px' }}
+              >
+                Cover Backing Tracks
+              </button>
+              <button 
+                className={`daw-track-btn ${libraryTab === 'synth' ? 'active rec' : ''}`}
+                onClick={() => setLibraryTab('synth')}
+                style={{ fontSize: '0.75rem', padding: '5px 12px' }}
+              >
+                ACID Synth Loops
+              </button>
             </div>
-            <button className="glowing-button" onClick={() => setIsLibraryOpen(false)} style={{ width: '100%', margin: 0 }}>Close Library</button>
+
+            {libraryTab === 'cover' ? (
+              <>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', margin: '0 0 10px 0' }}>Select a cover track from the library catalog to import onto the DAW timeline.</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '260px', overflowY: 'auto' }}>
+                  {librarySongs.map(song => (
+                    <div 
+                      key={song.id} 
+                      className="glass-panel" 
+                      style={{ margin: 0, background: 'rgba(255,255,255,0.02)', padding: '10px 15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                      onClick={() => importSongFromUrl(targetTrackId, song)}
+                    >
+                      <div>
+                        <b style={{ color: '#fff', fontSize: '0.9rem' }}>{song.title}</b>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '4px' }}>{song.artist}</div>
+                      </div>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--primary-glow)', fontWeight: 'bold' }}>Import →</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', margin: '0 0 10px 0' }}>Insert custom synthesized loops generated in real-time by the Web Audio matrix.</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '260px', overflowY: 'auto' }}>
+                  {[
+                    { id: 'drums', name: 'Muladhara Grounding Drum Beat', desc: 'Synthesized TR-808 style organic kicks and noise snares.' },
+                    { id: 'bass', name: 'Solfeggio Sub-Bass (528Hz)', desc: 'Pulsating deep sub-bass line matching target scale frequency.' },
+                    { id: 'pads', name: 'Anahata Ethereal Pads', desc: 'Warm chord sweeps to elevate vocal warmth and cohesion.' },
+                    { id: 'chimes', name: 'Ajna Solar Lead Chimes', desc: 'Bell-like arpeggiating chimes to stimulate clarity.' }
+                  ].map(synth => (
+                    <div 
+                      key={synth.id} 
+                      className="glass-panel" 
+                      style={{ margin: 0, background: 'rgba(255,255,255,0.02)', padding: '10px 15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                      onClick={() => importSynthClip(targetTrackId, synth.id)}
+                    >
+                      <div>
+                        <b style={{ color: '#00ff87', fontSize: '0.9rem' }}>{synth.name}</b>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '4px' }}>{synth.desc}</div>
+                      </div>
+                      <span style={{ fontSize: '0.75rem', color: '#00ff87', fontWeight: 'bold' }}>Generate +</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            
+            <button className="glowing-button" onClick={() => setIsLibraryOpen(false)} style={{ width: '100%', marginTop: '15px', marginBottom: 0 }}>Close Library</button>
           </div>
         </div>
       )}

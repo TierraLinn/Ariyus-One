@@ -41,6 +41,14 @@ const FrequencyLab = ({ navigate, user, userData }) => {
   const [chatInput, setChatInput] = useState('');
   const [isHost, setIsHost] = useState(false);
 
+  // WebRTC & Audio Jam Refs/States
+  const [isLiveJamming, setIsLiveJamming] = useState(false);
+  const peerConnectionsRef = useRef({});
+  const remoteStreamsRef = useRef({});
+  const localAudioStreamRef = useRef(null);
+  const signalsUnsubscribeRef = useRef(null);
+  const mockAudioNodesRef = useRef(null);
+
   const chatEndRef = useRef(null);
   const mandalaCanvasRef = useRef(null);
 
@@ -123,6 +131,7 @@ const FrequencyLab = ({ navigate, user, userData }) => {
     return () => {
       stopTone();
       stopVocalScanner();
+      stopLiveJam();
     };
   }, []);
 
@@ -750,6 +759,236 @@ const FrequencyLab = ({ navigate, user, userData }) => {
     }
   };
 
+  // --- WebRTC Peer-to-Peer Live Jamming & Audio Fallbacks ---
+
+  const createPeerConnection = (peerUid) => {
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
+    });
+
+    if (localAudioStreamRef.current) {
+      localAudioStreamRef.current.getTracks().forEach(track => {
+        pc.addTrack(track, localAudioStreamRef.current);
+      });
+    }
+
+    pc.onicecandidate = async (event) => {
+      if (event.candidate && activeRoomId && user) {
+        try {
+          await addDoc(collection(db, "rooms", activeRoomId, "signals"), {
+            type: 'candidate',
+            from: user.uid,
+            to: peerUid,
+            candidate: JSON.stringify(event.candidate),
+            timestamp: serverTimestamp()
+          });
+        } catch (e) {
+          console.error("Error sending candidate:", e);
+        }
+      }
+    };
+
+    pc.ontrack = (event) => {
+      const remoteStream = event.streams[0];
+      const audio = new Audio();
+      audio.srcObject = remoteStream;
+      audio.autoplay = true;
+      audio.play().catch(e => console.warn("Autoplay remote peer audio blocked:", e));
+      remoteStreamsRef.current[peerUid] = { audio, stream: remoteStream };
+    };
+
+    return pc;
+  };
+
+  const startLiveJam = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      localAudioStreamRef.current = stream;
+      setIsLiveJamming(true);
+
+      if (isFirebaseConfigured && activeRoomId && user) {
+        const signalsCollection = collection(db, "rooms", activeRoomId, "signals");
+        const pcMap = {};
+
+        const unsubscribe = onSnapshot(collection(db, "rooms", activeRoomId, "signals"), (snapshot) => {
+          snapshot.docChanges().forEach(async (change) => {
+            if (change.type === "added") {
+              const signal = change.doc.data();
+              if (signal.to === user.uid) {
+                const fromPeer = signal.from;
+                let pc = pcMap[fromPeer];
+                if (!pc) {
+                  pc = createPeerConnection(fromPeer);
+                  pcMap[fromPeer] = pc;
+                }
+
+                if (signal.type === 'offer') {
+                  await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: signal.sdp }));
+                  const answer = await pc.createAnswer();
+                  await pc.setLocalDescription(answer);
+                  await addDoc(signalsCollection, {
+                    type: 'answer',
+                    from: user.uid,
+                    to: fromPeer,
+                    sdp: answer.sdp,
+                    timestamp: serverTimestamp()
+                  });
+                } else if (signal.type === 'answer') {
+                  await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: signal.sdp }));
+                } else if (signal.type === 'candidate' && signal.candidate) {
+                  await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(signal.candidate)));
+                }
+              }
+            }
+          });
+        });
+
+        signalsUnsubscribeRef.current = unsubscribe;
+
+        roomMembers.forEach(async (member) => {
+          if (member.uid !== user.uid && member.uid !== 'self' && member.uid < user.uid) {
+            const pc = createPeerConnection(member.uid);
+            pcMap[member.uid] = pc;
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            await addDoc(signalsCollection, {
+              type: 'offer',
+              from: user.uid,
+              to: member.uid,
+              sdp: offer.sdp,
+              timestamp: serverTimestamp()
+            });
+          }
+        });
+
+        peerConnectionsRef.current = pcMap;
+      } else {
+        const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+        const ctx = new AudioCtxClass();
+        const source = ctx.createMediaStreamSource(stream);
+
+        const delay1 = ctx.createDelay();
+        delay1.delayTime.setValueAtTime(0.035, ctx.currentTime);
+        const lfo1 = ctx.createOscillator();
+        lfo1.type = 'sine';
+        lfo1.frequency.setValueAtTime(1.5, ctx.currentTime);
+        const lfo1Gain = ctx.createGain();
+        lfo1Gain.gain.setValueAtTime(0.005, ctx.currentTime);
+        lfo1.connect(lfo1Gain);
+        lfo1Gain.connect(delay1.delayTime);
+        lfo1.start();
+
+        const delay2 = ctx.createDelay();
+        delay2.delayTime.setValueAtTime(0.055, ctx.currentTime);
+        const lfo2 = ctx.createOscillator();
+        lfo2.type = 'sine';
+        lfo2.frequency.setValueAtTime(2.2, ctx.currentTime);
+        const lfo2Gain = ctx.createGain();
+        lfo2Gain.gain.setValueAtTime(0.007, ctx.currentTime);
+        lfo2.connect(lfo2Gain);
+        lfo2Gain.connect(delay2.delayTime);
+        lfo2.start();
+
+        const chorusGain = ctx.createGain();
+        chorusGain.gain.setValueAtTime(0.35, ctx.currentTime);
+
+        source.connect(delay1);
+        source.connect(delay2);
+        delay1.connect(chorusGain);
+        delay2.connect(chorusGain);
+        chorusGain.connect(ctx.destination);
+
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const osc3 = ctx.createOscillator();
+        const choirGain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+
+        osc1.type = osc2.type = osc3.type = 'triangle';
+        osc1.frequency.setValueAtTime(selectedHz, ctx.currentTime);
+        osc2.frequency.setValueAtTime(selectedHz * 1.25, ctx.currentTime);
+        osc3.frequency.setValueAtTime(selectedHz * 1.5, ctx.currentTime);
+
+        const initialChoirGain = (groupCoherence / 100) * 0.12;
+        choirGain.gain.setValueAtTime(initialChoirGain, ctx.currentTime);
+
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(450, ctx.currentTime);
+
+        osc1.connect(filter);
+        osc2.connect(filter);
+        osc3.connect(filter);
+        filter.connect(choirGain);
+        choirGain.connect(ctx.destination);
+
+        osc1.start();
+        osc2.start();
+        osc3.start();
+
+        mockAudioNodesRef.current = {
+          ctx,
+          source,
+          lfos: [lfo1, lfo2],
+          oscs: [osc1, osc2, osc3],
+          choirGain,
+          filter
+        };
+      }
+    } catch (err) {
+      console.error("Live jam startup failed:", err);
+      alert("Microphone permission is required to go live in the jam lobby.");
+      setIsLiveJamming(false);
+    }
+  };
+
+  const stopLiveJam = () => {
+    setIsLiveJamming(false);
+    if (signalsUnsubscribeRef.current) {
+      signalsUnsubscribeRef.current();
+      signalsUnsubscribeRef.current = null;
+    }
+    if (localAudioStreamRef.current) {
+      localAudioStreamRef.current.getTracks().forEach(track => track.stop());
+      localAudioStreamRef.current = null;
+    }
+    Object.keys(peerConnectionsRef.current).forEach(uid => {
+      peerConnectionsRef.current[uid].close();
+    });
+    peerConnectionsRef.current = {};
+    Object.keys(remoteStreamsRef.current).forEach(uid => {
+      const peerAudio = remoteStreamsRef.current[uid];
+      if (peerAudio.audio) {
+        peerAudio.audio.srcObject = null;
+        peerAudio.audio.pause();
+      }
+    });
+    remoteStreamsRef.current = {};
+    if (mockAudioNodesRef.current) {
+      const { ctx, lfos, oscs } = mockAudioNodesRef.current;
+      lfos.forEach(l => { try { l.stop(); } catch(e){} });
+      oscs.forEach(o => { try { o.stop(); } catch(e){} });
+      try { ctx.close(); } catch(e){}
+      mockAudioNodesRef.current = null;
+    }
+  };
+
+  const handleToggleLiveJam = () => {
+    if (isLiveJamming) stopLiveJam();
+    else startLiveJam();
+  };
+
+  useEffect(() => {
+    if (isLiveJamming && mockAudioNodesRef.current) {
+      const { choirGain, filter, ctx } = mockAudioNodesRef.current;
+      const targetGain = (groupCoherence / 100) * 0.15;
+      choirGain.gain.setValueAtTime(targetGain, ctx.currentTime);
+      filter.frequency.setValueAtTime(300 + (groupCoherence / 100) * 600, ctx.currentTime);
+    }
+  }, [groupCoherence, isLiveJamming]);
+
   // --- HTML LAYOUT VIEWS ---
 
   if (activeRoomId) {
@@ -857,6 +1096,22 @@ const FrequencyLab = ({ navigate, user, userData }) => {
               <div className="slider-group" style={{ marginTop: '8px' }}>
                 <input type="range" className="slider-input" min="0" max="100" value={volume} onChange={e => setVolume(parseInt(e.target.value))} disabled={!isPlaying} style={{ height: '4px' }} />
               </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '10px', marginTop: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Live Voice Jam Lobbies:</span>
+                <button 
+                  className={`glowing-button ${isLiveJamming ? 'secondary' : ''}`} 
+                  onClick={handleToggleLiveJam}
+                  style={{ margin: 0, fontSize: '0.65rem', padding: '2px 8px', borderColor: isLiveJamming ? '#ff00c1' : '' }}
+                >
+                  {isLiveJamming ? '⏹ Stop Jam' : '⚡ Go Live'}
+                </button>
+              </div>
+              <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)', margin: '4px 0 0' }}>
+                {isLiveJamming ? '🔴 Live stream active. Singing with room members.' : 'Offline. Click Go Live to broadcast audio.'}
+              </p>
             </div>
           </div>
 

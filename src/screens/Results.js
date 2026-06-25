@@ -38,6 +38,83 @@ const drawChakraNode = (ctx, x, y, score, color, index, voiceVolumeFactor) => {
   ctx.restore();
 };
 
+// --- Web Audio Crossfading Formant-Preserving Pitch Shifter ---
+const createPitchShifterNode = (ctx, pitchRatio) => {
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  
+  if (Math.abs(pitchRatio - 1.0) < 0.01) {
+    input.connect(output);
+    return { input, output, stop: () => {} };
+  }
+
+  const delayTime = 0.040;
+  const delay1 = ctx.createDelay(0.1);
+  const delay2 = ctx.createDelay(0.1);
+
+  const lfo = ctx.createOscillator();
+  lfo.type = 'sawtooth';
+  lfo.frequency.setValueAtTime(1 / delayTime, ctx.currentTime);
+
+  const lfoGain = ctx.createGain();
+  lfoGain.gain.setValueAtTime(-delayTime * (pitchRatio - 1.0), ctx.currentTime);
+  
+  lfo.connect(lfoGain);
+  lfoGain.connect(delay1.delayTime);
+
+  const lfoShift = ctx.createDelay(0.1);
+  lfoShift.delayTime.setValueAtTime(delayTime / 2, ctx.currentTime);
+  lfoGain.connect(lfoShift);
+  lfoShift.connect(delay2.delayTime);
+
+  const crossfadeOsc = ctx.createOscillator();
+  crossfadeOsc.type = 'triangle';
+  crossfadeOsc.frequency.setValueAtTime(1 / delayTime, ctx.currentTime);
+
+  const gain1 = ctx.createGain();
+  const gain2 = ctx.createGain();
+
+  const shaper1 = ctx.createWaveShaper();
+  const curve1 = new Float32Array(512);
+  for (let i = 0; i < 512; i++) {
+    const x = (i / 255.5) - 1.0;
+    curve1[i] = (x + 1.0) / 2.0;
+  }
+  shaper1.curve = curve1;
+
+  const shaper2 = ctx.createWaveShaper();
+  const curve2 = new Float32Array(512);
+  for (let i = 0; i < 512; i++) {
+    const x = (i / 255.5) - 1.0;
+    curve2[i] = 1.0 - ((x + 1.0) / 2.0);
+  }
+  shaper2.curve = curve2;
+
+  crossfadeOsc.connect(shaper1);
+  shaper1.connect(gain1.gain);
+  crossfadeOsc.connect(shaper2);
+  shaper2.connect(gain2.gain);
+
+  input.connect(delay1);
+  input.connect(delay2);
+  delay1.connect(gain1);
+  delay2.connect(gain2);
+  gain1.connect(output);
+  gain2.connect(output);
+
+  lfo.start();
+  crossfadeOsc.start();
+
+  return {
+    input,
+    output,
+    stop: () => {
+      try { lfo.stop(); } catch(e){}
+      try { crossfadeOsc.stop(); } catch(e){}
+    }
+  };
+};
+
 const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userData, activeChallenge, handleCompleteChallenge }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -116,6 +193,10 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
   const carrierOscLeftRef = useRef(null);
   const carrierOscRightRef = useRef(null);
   const ringModOscRef = useRef(null);
+
+  // Pitch Shifter nodes
+  const voicePitchShifterRef = useRef(null);
+  const backingPitchShifterRef = useRef(null);
 
   // Analysers
   const voiceAnalyserRef = useRef(null);
@@ -465,9 +546,14 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       backingPeakingFilterRef.current.frequency.setValueAtTime(selectedFreq, ctx.currentTime);
       backingPeakingFilterRef.current.gain.setValueAtTime(activeEffects.includes('Acoustic Coupling') ? 15.0 : 0.0, ctx.currentTime);
 
+      // Pitch-preserving pitch shifter initialization
+      const pitchRatio = isDryActive ? 1.0 : getPlaybackRateForFrequency(selectedFreq);
+      voicePitchShifterRef.current = createPitchShifterNode(ctx, pitchRatio);
+      backingPitchShifterRef.current = createPitchShifterNode(ctx, pitchRatio);
+
       // --- Vocal routing connections ---
-      // voiceSource -> highpassFilter (clarity) -> waveshaper & reverb splits -> ringMod -> combDelay split -> voiceGain -> voicePanner -> Analyser -> Output
-      voiceSourceRef.current.connect(highpassFilterRef.current);
+      voiceSourceRef.current.connect(voicePitchShifterRef.current.input);
+      voicePitchShifterRef.current.output.connect(highpassFilterRef.current);
       
       // Splits for FX
       highpassFilterRef.current.connect(waveshaperNodeRef.current);
@@ -493,8 +579,8 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       voiceAnalyserRef.current.connect(ctx.destination);
 
       // --- Backing track routing connections ---
-      // backingSource -> lowselfFilter (hyper bass) -> backingPeakingFilter (coupling) -> backingGain -> backingPanner -> Analyser -> Output
-      backingSourceRef.current.connect(lowselfFilterRef.current);
+      backingSourceRef.current.connect(backingPitchShifterRef.current.input);
+      backingPitchShifterRef.current.output.connect(lowselfFilterRef.current);
       lowselfFilterRef.current.connect(backingPeakingFilterRef.current);
       backingPeakingFilterRef.current.connect(backingGainRef.current);
       
@@ -560,7 +646,44 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       ctx.suspend();
     }
     clearInterval(pannerOrbitIntervalRef.current);
+    if (voicePitchShifterRef.current) {
+      voicePitchShifterRef.current.stop();
+      voicePitchShifterRef.current = null;
+    }
+    if (backingPitchShifterRef.current) {
+      backingPitchShifterRef.current.stop();
+      backingPitchShifterRef.current = null;
+    }
   };
+
+  // Rebuild audio engine dynamically on Solfeggio target frequency modifications
+  useEffect(() => {
+    if (isPlaying) {
+      voiceAudioElRef.current?.pause();
+      backingAudioElRef.current?.pause();
+      if (audioCtxRef.current) {
+        try { audioCtxRef.current.close(); } catch(e){}
+        audioCtxRef.current = null;
+      }
+      startTones();
+      backingAudioElRef.current.currentTime = voiceAudioElRef.current.currentTime;
+      Promise.all([
+        voiceAudioElRef.current.play(),
+        backingAudioElRef.current.play()
+      ]).catch(e => console.warn("Failed to play on rebuild:", e));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFreq, isDryActive]);
+
+  useEffect(() => {
+    return () => {
+      stopTones();
+      if (audioCtxRef.current) {
+        try { audioCtxRef.current.close(); } catch(e){}
+        audioCtxRef.current = null;
+      }
+    };
+  }, []);
 
   // Maps 2D Soundstage positions into actual Panning and Volume Gain values
   const syncSoundstageToNodes = () => {
@@ -1028,9 +1151,9 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       startTones();
       backing.currentTime = voice.currentTime;
 
-      const scale = isDryActive ? 1.0 : getPlaybackRateForFrequency(selectedFreq);
-      voice.playbackRate = scale;
-      backing.playbackRate = scale;
+      // Keep original speed/tempo constant - retuning is done via Web Audio pitch-preserving nodes
+      voice.playbackRate = 1.0;
+      backing.playbackRate = 1.0;
 
       Promise.all([
         voice.play(),
