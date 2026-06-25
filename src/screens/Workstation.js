@@ -77,7 +77,7 @@ const writeString = (view, offset, string) => {
   }
 };
 
-const WorkstationScreen = ({ userData, navigate }) => {
+const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
   const isPaidUser = userData?.tier !== 'Free';
 
   // --- DAW Track States ---
@@ -137,6 +137,36 @@ const WorkstationScreen = ({ userData, navigate }) => {
   const mediaRecorderRef = useRef(null);
   const recChunksRef = useRef([]);
   const streamRef = useRef(null);
+
+  // Load duet partner vocals on mount if redirected from social feed duet button
+  useEffect(() => {
+    if (duetPayload) {
+      const loadDuetVocals = async () => {
+        const ctx = getAudioContext();
+        try {
+          const response = await fetch(duetPayload.playbackUrl);
+          const arrayBuffer = await response.arrayBuffer();
+          const decoded = await ctx.decodeAudioData(arrayBuffer);
+          setTracks(prev => prev.map(t => {
+            if (t.id === 2) {
+              return { ...t, buffer: decoded, name: `Duet: ${duetPayload.userDisplayName}`, filename: duetPayload.song.title };
+            }
+            if (t.id === 1) {
+              return { ...t, name: 'Your Vocals (Mic)' };
+            }
+            return t;
+          }));
+          setTimeout(() => {
+            drawWaveform(2, decoded);
+          }, 100);
+        } catch(e) {
+          console.error("Failed to load duet guide vocals:", e);
+        }
+      };
+      loadDuetVocals();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duetPayload]);
 
   // Get max timeline length
   const getTimelineDuration = () => {

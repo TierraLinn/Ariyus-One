@@ -380,6 +380,31 @@ function App() {
 
   // --- Screens Router ---
   const renderScreen = () => {
+    // Intercept Remix payload redirects
+    if (screen === 'Results' && screenProps.remixPayload) {
+      const rp = screenProps.remixPayload;
+      if (!currentRecording || currentRecording.playbackUrl !== rp.playbackUrl) {
+        setCurrentRecording({
+          playbackUrl: rp.playbackUrl,
+          selectedSong: rp.song,
+          signature: rp.voiceSignature || {
+            vocalType: 'Alto',
+            resonanceType: 'Mixed Voice',
+            dominantFreq: '220 Hz',
+            energy: 78,
+            flow: 82,
+            expression: 75,
+            breath: 88,
+            stability: 84
+          },
+          tones: ['Remix', 'Vocal', 'Coherent'],
+          recordTime: 120,
+          isRemix: true,
+          originalSinger: rp.userDisplayName
+        });
+      }
+    }
+
     const props = {
       navigate,
       user,

@@ -1,6 +1,62 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+
+const FeedMiniVisualizer = ({ analyser }) => {
+  const canvasRef = useRef(null);
+  const animRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !analyser) return;
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width = canvas.offsetWidth;
+    const height = canvas.height = canvas.offsetHeight;
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+
+    const draw = () => {
+      analyser.getByteTimeDomainData(dataArray);
+      ctx.fillStyle = 'rgba(7, 6, 48, 0.4)';
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(0, 242, 255, 0.8)';
+      ctx.shadowBlur = 4;
+      ctx.shadowColor = 'rgba(0, 242, 255, 0.4)';
+      ctx.beginPath();
+
+      const sliceWidth = width / bufferLength;
+      let x = 0;
+
+      for (let i = 0; i < bufferLength; i++) {
+        const v = dataArray[i] / 128.0;
+        const y = (v * height) / 2;
+
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+
+        x += sliceWidth;
+      }
+
+      ctx.lineTo(width, height / 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      animRef.current = requestAnimationFrame(draw);
+    };
+
+    animRef.current = requestAnimationFrame(draw);
+    return () => {
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+    };
+  }, [analyser]);
+
+  return <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />;
+};
 
 const defaultCommunityFeed = [
   {
@@ -41,6 +97,10 @@ const CommunityFeed = ({ navigate, userData }) => {
   const [activeAudioId, setActiveAudioId] = useState(null);
   const [commentInputs, setCommentInputs] = useState({});
   const audioRef = React.useRef(null);
+  
+  const audioCtxRef = useRef(null);
+  const analyserRef = useRef(null);
+  const sourceRef = useRef(null);
 
   const currentUser = userData?.displayName || 'Guest User';
   const currentUserId = userData?.uid || 'guest';
@@ -145,20 +205,42 @@ const CommunityFeed = ({ navigate, userData }) => {
 
   const handlePlayToggle = (id, url) => {
     if (activeAudioId === id) {
-      audioRef.current.pause();
+      if (audioRef.current) audioRef.current.pause();
       setActiveAudioId(null);
     } else {
       if (audioRef.current) {
         audioRef.current.pause();
       }
       setActiveAudioId(id);
-      audioRef.current = new Audio(url);
-      audioRef.current.play().catch(err => {
+      
+      const audio = new Audio(url);
+      audio.crossOrigin = "anonymous";
+      audioRef.current = audio;
+      
+      if (!audioCtxRef.current) {
+        const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+        audioCtxRef.current = new AudioCtxClass();
+        analyserRef.current = audioCtxRef.current.createAnalyser();
+        analyserRef.current.fftSize = 128;
+      }
+
+      if (sourceRef.current) {
+        try { sourceRef.current.disconnect(); } catch(e){}
+      }
+
+      try {
+        sourceRef.current = audioCtxRef.current.createMediaElementSource(audio);
+        sourceRef.current.connect(analyserRef.current);
+        analyserRef.current.connect(audioCtxRef.current.destination);
+      } catch (err) {
+        console.warn("createMediaElementSource failed (likely already connected):", err);
+      }
+
+      audio.play().catch(err => {
         console.warn("Audio playback failed:", err);
-        alert("Audio file could not be played in local preview.");
         setActiveAudioId(null);
       });
-      audioRef.current.onended = () => setActiveAudioId(null);
+      audio.onended = () => setActiveAudioId(null);
     }
   };
 
@@ -217,14 +299,19 @@ const CommunityFeed = ({ navigate, userData }) => {
               </div>
 
               {/* Actions & Playbar */}
-              <div style={{ display: 'flex', gap: '15px', alignItems: 'center', margin: '15px 0' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', margin: '15px 0' }}>
                 <button 
                   className="glowing-button" 
-                  style={{ margin: 0, padding: '8px 20px', fontSize: '0.85rem' }}
+                  style={{ margin: 0, padding: '8px 20px', fontSize: '0.85rem', width: 'fit-content' }}
                   onClick={() => handlePlayToggle(item.id, item.playbackUrl)}
                 >
                   {activeAudioId === item.id ? '⏸ Pause Matrix' : '▶ Listen Capture'}
                 </button>
+                {activeAudioId === item.id && (
+                  <div style={{ height: '40px', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <FeedMiniVisualizer analyser={analyserRef.current} />
+                  </div>
+                )}
               </div>
 
               {/* Feed Actions */}
@@ -232,10 +319,10 @@ const CommunityFeed = ({ navigate, userData }) => {
                 <button className={isLiked ? 'active' : ''} onClick={() => handleLike(item)}>
                   ❤️ Like ({item.likes?.length || 0})
                 </button>
-                <button onClick={() => navigate('Recording', { selectedSong: item.song })}>
+                <button onClick={() => navigate('Workstation', { duetPayload: item })}>
                   🎙 Duet
                 </button>
-                <button onClick={() => navigate('Results', { selectedSong: item.song })}>
+                <button onClick={() => navigate('Results', { remixPayload: item })}>
                   🎛 Remix
                 </button>
                 <button onClick={() => handleShare(item.song.title)}>

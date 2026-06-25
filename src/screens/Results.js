@@ -1066,11 +1066,16 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       const snapshot = await uploadBytes(storageRef, audioBlob);
       const cloudPlaybackUrl = await getDownloadURL(snapshot.ref);
 
+      const baseSong = currentRecording?.selectedSong || { title: 'Freestyle Resonance', artist: 'Self' };
+      const songData = currentRecording?.isRemix 
+        ? { title: `${baseSong.title} (Remix of ${currentRecording.originalSinger})`, artist: baseSong.artist }
+        : baseSong;
+
       const recordingData = {
         userDisplayName: userData?.displayName || user?.email?.split('@')[0] || 'Aura Singer',
         userId: user?.uid || 'guest_user',
         timestamp: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(),
-        song: currentRecording?.selectedSong || { title: 'Freestyle Resonance', artist: 'Self' },
+        song: songData,
         playbackUrl: cloudPlaybackUrl,
         ariyusRating: rating,
         selectedFreq,
@@ -1116,8 +1121,13 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
         await handleCompleteChallenge(activeChallenge, reward);
       }
       
+      const baseSong = currentRecording?.selectedSong || { title: 'Freestyle Resonance', artist: 'Self' };
+      const songData = currentRecording?.isRemix 
+        ? { title: `${baseSong.title} (Remix of ${currentRecording.originalSinger})`, artist: baseSong.artist }
+        : baseSong;
+
       saveAndShare({
-        song: currentRecording?.selectedSong || { title: 'Freestyle Resonance', artist: 'Self' },
+        song: songData,
         ariyusRating: rating,
         voiceSignature: signature,
         tones: tones,
@@ -1403,7 +1413,14 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
       {/* Title */}
-      <h2 style={{ textShadow: '0 0 10px var(--primary-glow)', margin: 0 }}>Ariyus ARC-5 Chamber</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+        <h2 style={{ textShadow: '0 0 10px var(--primary-glow)', margin: 0 }}>Ariyus ARC-5 Chamber</h2>
+        {currentRecording?.isRemix && (
+          <span className="level-badge" style={{ background: 'var(--secondary-glow)', boxShadow: '0 0 10px var(--secondary-glow)', fontSize: '0.8rem' }}>
+            ✦ REMIX MODE (Target: {currentRecording.originalSinger})
+          </span>
+        )}
+      </div>
 
       {/* Challenge Completed Victory HUD */}
       {currentRecording?.challengeCompleted && activeChallenge && (
