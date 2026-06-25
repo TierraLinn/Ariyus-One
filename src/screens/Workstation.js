@@ -1,4 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { db } from '../firebase';
+import { collection, getDocs } from 'firebase/firestore';
+
+const makeDistortionCurve = (amount) => {
+  if (amount <= 0) return null;
+  const k = amount;
+  const n_samples = 44100;
+  const curve = new Float32Array(n_samples);
+  const deg = Math.PI / 180;
+  for (let i = 0; i < n_samples; ++i) {
+    const x = (i * 2) / n_samples - 1;
+    curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+  }
+  return curve;
+};
 
 
 // Helper: Standard browser WAV Encoder for Sound Forge Mixdown export
@@ -67,10 +82,10 @@ const WorkstationScreen = ({ userData, navigate }) => {
 
   // --- DAW Track States ---
   const [tracks, setTracks] = useState([
-    { id: 1, name: 'Vocal Track 1', type: 'vocal', volume: 80, pan: 0, mute: false, solo: false, isRecording: false, buffer: null, filename: '' },
-    { id: 2, name: 'Backing Instrumental', type: 'backing', volume: 70, pan: 0, mute: false, solo: false, buffer: null, filename: '' },
-    { id: 3, name: 'Solfeggio Osc Drone', type: 'osc', volume: 20, pan: 0, mute: false, solo: false, hz: 528, filename: 'Synth sine carrier' },
-    { id: 4, name: 'Ambient Space Loop', type: 'sfx', volume: 40, pan: 0, mute: false, solo: false, buffer: null, filename: '' }
+    { id: 1, name: 'Vocal Track 1', type: 'vocal', volume: 80, pan: 0, mute: false, solo: false, isRecording: false, buffer: null, filename: '', fxDelayTime: 0.3, fxDelayFeedback: 30, fxFilterCutoff: 1500, fxFilterType: 'lowpass', fxDistortion: 0, fxExpanded: false },
+    { id: 2, name: 'Backing Instrumental', type: 'backing', volume: 70, pan: 0, mute: false, solo: false, buffer: null, filename: '', fxDelayTime: 0.3, fxDelayFeedback: 30, fxFilterCutoff: 1500, fxFilterType: 'lowpass', fxDistortion: 0, fxExpanded: false },
+    { id: 3, name: 'Solfeggio Osc Drone', type: 'osc', volume: 20, pan: 0, mute: false, solo: false, hz: 528, filename: 'Synth sine carrier', fxDelayTime: 0.3, fxDelayFeedback: 30, fxFilterCutoff: 1500, fxFilterType: 'lowpass', fxDistortion: 0, fxExpanded: false },
+    { id: 4, name: 'Ambient Space Loop', type: 'sfx', volume: 40, pan: 0, mute: false, solo: false, buffer: null, filename: '', fxDelayTime: 0.3, fxDelayFeedback: 30, fxFilterCutoff: 1500, fxFilterType: 'lowpass', fxDistortion: 0, fxExpanded: false }
   ]);
 
   // --- Transport States ---
@@ -81,6 +96,11 @@ const WorkstationScreen = ({ userData, navigate }) => {
   const [mixdownProgress, setMixdownProgress] = useState(0);
   const [limiterActive, setLimiterActive] = useState(true);
   const [selectedResonance, setSelectedResonance] = useState(528);
+
+  // --- Instrumentals Library States ---
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const [librarySongs, setLibrarySongs] = useState([]);
+  const [targetTrackId, setTargetTrackId] = useState(null);
 
   // --- Master EQ States & Refs ---
   const [eqBass, setEqBass] = useState(0);
@@ -98,6 +118,12 @@ const WorkstationScreen = ({ userData, navigate }) => {
   const trackGainsRef = useRef({});
   const trackPannersRef = useRef({});
   const masterGainRef = useRef(null);
+
+  // --- Track-Level Insert FX Refs ---
+  const trackFiltersRef = useRef({});
+  const trackDelaysRef = useRef({});
+  const trackDelayFeedbacksRef = useRef({});
+  const trackDistortionsRef = useRef({});
 
   // --- Transport Timer Refs ---
   const timelineTimerRef = useRef(null);
@@ -183,6 +209,28 @@ const WorkstationScreen = ({ userData, navigate }) => {
     }
   }, [masterVolume]);
 
+  // Load songs database library on mount
+  useEffect(() => {
+    const loadSongs = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, "songs"));
+        const songs = [];
+        querySnapshot.forEach((doc) => {
+          songs.push({ id: doc.id, ...doc.data() });
+        });
+        setLibrarySongs(songs);
+      } catch (err) {
+        console.warn("Could not load songs database library, using offline mock instrumentals:", err);
+        setLibrarySongs([
+          { id: 'm1', title: 'Cosmic Resonance', artist: 'Solfeggio 528Hz Guide', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' },
+          { id: 'm2', title: 'Solar Plexus Alignment', artist: 'Theta Wave 432Hz Beat', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3' },
+          { id: 'm3', title: 'Throat Chakra Cleansing', artist: '741Hz Ambient Drone', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3' }
+        ]);
+      }
+    };
+    loadSongs();
+  }, []);
+
   // Sync individual track gains/pans during playback
   useEffect(() => {
     const ctx = audioCtxRef.current;
@@ -204,6 +252,25 @@ const WorkstationScreen = ({ userData, navigate }) => {
       }
       if (trackPannersRef.current[t.id] && trackPannersRef.current[t.id].pan) {
         trackPannersRef.current[t.id].pan.setValueAtTime(t.pan, ctx.currentTime);
+      }
+
+      // Sync Real-Time track FX values
+      if (trackFiltersRef.current[t.id]) {
+        trackFiltersRef.current[t.id].type = t.fxFilterType || 'lowpass';
+        trackFiltersRef.current[t.id].frequency.setValueAtTime(t.fxFilterCutoff || 1500, ctx.currentTime);
+      }
+      if (trackDelaysRef.current[t.id]) {
+        trackDelaysRef.current[t.id].delayTime.setValueAtTime(t.fxDelayTime || 0.0, ctx.currentTime);
+      }
+      if (trackDelayFeedbacksRef.current[t.id]) {
+        trackDelayFeedbacksRef.current[t.id].gain.setValueAtTime((t.fxDelayFeedback || 0) / 100, ctx.currentTime);
+      }
+      if (trackDistortionsRef.current[t.id]) {
+        if (t.fxDistortion > 0) {
+          trackDistortionsRef.current[t.id].curve = makeDistortionCurve(t.fxDistortion);
+        } else {
+          trackDistortionsRef.current[t.id].curve = null;
+        }
       }
 
       // Re-configure oscillators dynamically if hz changes
@@ -296,17 +363,48 @@ const WorkstationScreen = ({ userData, navigate }) => {
       gainNode.gain.setValueAtTime(initialVolume, ctx.currentTime);
       if (pannerNode.pan) pannerNode.pan.setValueAtTime(t.pan, ctx.currentTime);
 
+      // Create track-level FX insert nodes
+      const filterNode = ctx.createBiquadFilter();
+      filterNode.type = t.fxFilterType || 'lowpass';
+      filterNode.frequency.setValueAtTime(t.fxFilterCutoff || 1500, ctx.currentTime);
+
+      const distortionNode = ctx.createWaveShaper();
+      if (t.fxDistortion > 0) {
+        distortionNode.curve = makeDistortionCurve(t.fxDistortion);
+        distortionNode.oversample = '4x';
+      }
+
+      const delayNode = ctx.createDelay(1.0);
+      delayNode.delayTime.setValueAtTime(t.fxDelayTime || 0.0, ctx.currentTime);
+
+      const delayFeedbackNode = ctx.createGain();
+      delayFeedbackNode.gain.setValueAtTime((t.fxDelayFeedback || 0) / 100, ctx.currentTime);
+
+      // Delay feedback loop
+      delayNode.connect(delayFeedbackNode);
+      delayFeedbackNode.connect(delayNode);
+
+      // Routing: source -> filter -> distortion -> gainNode (dry) & delayNode -> gainNode (wet)
+      filterNode.connect(distortionNode);
+      distortionNode.connect(gainNode);
+      distortionNode.connect(delayNode);
+      delayNode.connect(gainNode);
+
       gainNode.connect(pannerNode);
       pannerNode.connect(masterGainRef.current);
 
       trackGainsRef.current[t.id] = gainNode;
       trackPannersRef.current[t.id] = pannerNode;
+      trackFiltersRef.current[t.id] = filterNode;
+      trackDelaysRef.current[t.id] = delayNode;
+      trackDelayFeedbacksRef.current[t.id] = delayFeedbackNode;
+      trackDistortionsRef.current[t.id] = distortionNode;
 
       // 2. Build sound sources
       if (t.buffer) {
         const source = ctx.createBufferSource();
         source.buffer = t.buffer;
-        source.connect(gainNode);
+        source.connect(filterNode);
         
         // Start buffer scheduling
         source.start(0, startOffset);
@@ -315,7 +413,7 @@ const WorkstationScreen = ({ userData, navigate }) => {
         const osc = ctx.createOscillator();
         osc.type = 'sine';
         osc.frequency.setValueAtTime(t.hz, ctx.currentTime);
-        osc.connect(gainNode);
+        osc.connect(filterNode);
         osc.start(0);
         oscNodesRef.current[t.id] = osc;
       }
@@ -352,6 +450,11 @@ const WorkstationScreen = ({ userData, navigate }) => {
       }
     });
 
+    trackFiltersRef.current = {};
+    trackDelaysRef.current = {};
+    trackDelayFeedbacksRef.current = {};
+    trackDistortionsRef.current = {};
+
     setIsPlaying(false);
   };
 
@@ -368,6 +471,11 @@ const WorkstationScreen = ({ userData, navigate }) => {
         delete oscNodesRef.current[t.id];
       }
     });
+
+    trackFiltersRef.current = {};
+    trackDelaysRef.current = {};
+    trackDelayFeedbacksRef.current = {};
+    trackDistortionsRef.current = {};
 
     pausedTimeRef.current = 0;
     setCurrentTime(0);
@@ -400,6 +508,33 @@ const WorkstationScreen = ({ userData, navigate }) => {
     };
 
     reader.readAsArrayBuffer(file);
+  };
+
+  // --- Database Backing Track URL Loader ---
+  const importSongFromUrl = async (trackId, song) => {
+    setIsLibraryOpen(false);
+    const ctx = getAudioContext();
+    try {
+      const response = await fetch(song.audioUrl);
+      const arrayBuffer = await response.arrayBuffer();
+      const decodedBuffer = await ctx.decodeAudioData(arrayBuffer);
+      
+      setTracks(prev => prev.map(t => {
+        if (t.id === trackId) {
+          return { ...t, buffer: decodedBuffer, filename: song.title };
+        }
+        return t;
+      }));
+
+      // Redraw canvas
+      setTimeout(() => {
+        drawWaveform(trackId, decodedBuffer);
+      }, 100);
+      
+    } catch(err) {
+      console.error("Failed to fetch and decode library audio:", err);
+      alert("Failed to load select song buffer. Check network status.");
+    }
   };
 
   // --- Microphone Recording directly to timeline track ---
@@ -506,7 +641,7 @@ const WorkstationScreen = ({ userData, navigate }) => {
 
       setMixdownProgress(40);
 
-      // Mix track buffers to offline contexts
+      // Mix track buffers to offline contexts with insert FX
       tracks.forEach(t => {
         const hasAnySolo = tracks.some(tr => tr.solo);
         let trackGain = (t.volume / 100);
@@ -518,20 +653,47 @@ const WorkstationScreen = ({ userData, navigate }) => {
         const pannerNode = offlineCtx.createStereoPanner ? offlineCtx.createStereoPanner() : offlineCtx.createGain();
         if (pannerNode.pan) pannerNode.pan.setValueAtTime(t.pan, offlineCtx.currentTime);
 
+        // Instantiate FX Nodes in Offline context
+        const filterNode = offlineCtx.createBiquadFilter();
+        filterNode.type = t.fxFilterType || 'lowpass';
+        filterNode.frequency.setValueAtTime(t.fxFilterCutoff || 1500, offlineCtx.currentTime);
+
+        const distortionNode = offlineCtx.createWaveShaper();
+        if (t.fxDistortion > 0) {
+          distortionNode.curve = makeDistortionCurve(t.fxDistortion);
+          distortionNode.oversample = '4x';
+        }
+
+        const delayNode = offlineCtx.createDelay(1.0);
+        delayNode.delayTime.setValueAtTime(t.fxDelayTime || 0.0, offlineCtx.currentTime);
+        
+        const delayFeedbackNode = offlineCtx.createGain();
+        delayFeedbackNode.gain.setValueAtTime((t.fxDelayFeedback || 0) / 100, offlineCtx.currentTime);
+
+        // Delay feedback loop
+        delayNode.connect(delayFeedbackNode);
+        delayFeedbackNode.connect(delayNode);
+
+        // Routing: source -> filter -> distortion -> gainNode (dry) & delayNode -> gainNode (wet)
+        filterNode.connect(distortionNode);
+        distortionNode.connect(gainNode);
+        distortionNode.connect(delayNode);
+        delayNode.connect(gainNode);
+
         gainNode.connect(pannerNode);
         pannerNode.connect(offlineBass);
 
         if (t.buffer) {
           const source = offlineCtx.createBufferSource();
           source.buffer = t.buffer;
-          source.connect(gainNode);
+          source.connect(filterNode);
           source.start(0);
         } else if (t.type === 'osc') {
           // Render Solfeggio carrier
           const osc = offlineCtx.createOscillator();
           osc.type = 'sine';
           osc.frequency.setValueAtTime(t.hz, offlineCtx.currentTime);
-          osc.connect(gainNode);
+          osc.connect(filterNode);
           osc.start(0);
           osc.stop(renderDuration);
         }
@@ -771,7 +933,7 @@ const WorkstationScreen = ({ userData, navigate }) => {
                 </div>
 
                 {/* Mute and Solo */}
-                <div className="daw-track-buttons-row">
+                <div className="daw-track-buttons-row" style={{ flexWrap: 'wrap', gap: '5px' }}>
                   <button 
                     className={`daw-track-btn ${t.mute ? 'active mute' : ''}`}
                     onClick={() => setTracks(prev => prev.map(tr => tr.id === t.id ? { ...tr, mute: !tr.mute } : tr))}
@@ -785,16 +947,33 @@ const WorkstationScreen = ({ userData, navigate }) => {
                     Solo
                   </button>
                   {t.type !== 'osc' && (
-                    <label className="daw-track-btn" style={{ padding: '3px 8px', display: 'inline-block' }}>
-                      Import Audio
-                      <input 
-                        type="file" 
-                        accept="audio/*" 
-                        onChange={e => handleFileUpload(t.id, e.target.files[0])}
-                        style={{ display: 'none' }} 
-                      />
-                    </label>
+                    <>
+                      <label className="daw-track-btn" style={{ padding: '3px 8px', display: 'inline-block' }}>
+                        Import
+                        <input 
+                          type="file" 
+                          accept="audio/*" 
+                          onChange={e => handleFileUpload(t.id, e.target.files[0])}
+                          style={{ display: 'none' }} 
+                        />
+                      </label>
+                      <button 
+                        className="daw-track-btn"
+                        onClick={() => {
+                          setTargetTrackId(t.id);
+                          setIsLibraryOpen(true);
+                        }}
+                      >
+                        📁 Lib
+                      </button>
+                    </>
                   )}
+                  <button 
+                    className={`daw-track-btn ${t.fxExpanded ? 'active solo' : ''}`}
+                    onClick={() => setTracks(prev => prev.map(tr => tr.id === t.id ? { ...tr, fxExpanded: !tr.fxExpanded } : tr))}
+                  >
+                    ✦ FX
+                  </button>
                 </div>
 
                 {/* Volume Fader */}
@@ -812,7 +991,7 @@ const WorkstationScreen = ({ userData, navigate }) => {
                 </div>
 
                 {/* Pan Slider */}
-                <div className="daw-track-slider-group">
+                <div className="daw-track-slider-group" style={{ marginBottom: t.fxExpanded ? '8px' : '0' }}>
                   <label>Pan</label>
                   <input 
                     type="range" 
@@ -826,6 +1005,80 @@ const WorkstationScreen = ({ userData, navigate }) => {
                     {t.pan === 0 ? 'C' : t.pan > 0 ? `R${Math.round(t.pan * 10)}` : `L${Math.round(Math.abs(t.pan) * 10)}`}
                   </span>
                 </div>
+
+                {/* Track-level insert FX panel */}
+                {t.fxExpanded && (
+                  <div style={{ marginTop: '10px', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                    <strong style={{ fontSize: '0.72rem', color: 'var(--primary-glow)', textTransform: 'uppercase' }}>✦ FX Inserts</strong>
+                    
+                    {/* Delay */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'var(--text-dim)' }}>
+                        <span>Echo Delay:</span>
+                        <span>{t.fxDelayTime.toFixed(2)}s</span>
+                      </div>
+                      <input 
+                        type="range" min="0" max="1" step="0.05" value={t.fxDelayTime} 
+                        onChange={e => setTracks(prev => prev.map(tr => tr.id === t.id ? { ...tr, fxDelayTime: parseFloat(e.target.value) } : tr))}
+                        className="slider-input"
+                        style={{ height: '3px' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'var(--text-dim)' }}>
+                        <span>Echo Feedback:</span>
+                        <span>{t.fxDelayFeedback}%</span>
+                      </div>
+                      <input 
+                        type="range" min="0" max="90" step="5" value={t.fxDelayFeedback} 
+                        onChange={e => setTracks(prev => prev.map(tr => tr.id === t.id ? { ...tr, fxDelayFeedback: parseInt(e.target.value) } : tr))}
+                        className="slider-input"
+                        style={{ height: '3px' }}
+                      />
+                    </div>
+
+                    {/* Filter */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'var(--text-dim)' }}>
+                        <span>Filter Cutoff:</span>
+                        <span>{t.fxFilterCutoff}Hz</span>
+                      </div>
+                      <input 
+                        type="range" min="100" max="8000" step="100" value={t.fxFilterCutoff} 
+                        onChange={e => setTracks(prev => prev.map(tr => tr.id === t.id ? { ...tr, fxFilterCutoff: parseInt(e.target.value) } : tr))}
+                        className="slider-input"
+                        style={{ height: '3px' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.65rem' }}>
+                      <span style={{ color: 'var(--text-dim)' }}>Type:</span>
+                      <button 
+                        className={`daw-track-btn ${t.fxFilterType === 'lowpass' ? 'active solo' : ''}`}
+                        style={{ fontSize: '0.6rem', padding: '1px 4px' }}
+                        onClick={() => setTracks(prev => prev.map(tr => tr.id === t.id ? { ...tr, fxFilterType: 'lowpass' } : tr))}
+                      >LPF</button>
+                      <button 
+                        className={`daw-track-btn ${t.fxFilterType === 'highpass' ? 'active solo' : ''}`}
+                        style={{ fontSize: '0.6rem', padding: '1px 4px' }}
+                        onClick={() => setTracks(prev => prev.map(tr => tr.id === t.id ? { ...tr, fxFilterType: 'highpass' } : tr))}
+                      >HPF</button>
+                    </div>
+
+                    {/* Tube Saturation */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'var(--text-dim)' }}>
+                        <span>Tube Drive:</span>
+                        <span>{t.fxDistortion}</span>
+                      </div>
+                      <input 
+                        type="range" min="0" max="80" step="5" value={t.fxDistortion} 
+                        onChange={e => setTracks(prev => prev.map(tr => tr.id === t.id ? { ...tr, fxDistortion: parseInt(e.target.value) } : tr))}
+                        className="slider-input"
+                        style={{ height: '3px' }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Track Right Timeline Waveform */}
@@ -852,6 +1105,42 @@ const WorkstationScreen = ({ userData, navigate }) => {
 
         </div>
       </div>
+
+      {/* Backing Instrumental library modal drawer */}
+      {isLibraryOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, width: '100vw', height: '100vh',
+          background: 'rgba(2, 0, 26, 0.85)',
+          backdropFilter: 'blur(10px)',
+          display: 'grid',
+          placeItems: 'center',
+          zIndex: 9999,
+          padding: '20px'
+        }}>
+          <div className="glass-panel" style={{ maxWidth: '500px', width: '100%', borderColor: 'var(--primary-glow)' }}>
+            <h3 style={{ margin: '0 0 5px 0' }}>Select Instrumental to Import</h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', margin: 0 }}>Select a track from the library catalog to load onto the DAW timeline.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '300px', overflowY: 'auto', margin: '15px 0' }}>
+              {librarySongs.map(song => (
+                <div 
+                  key={song.id} 
+                  className="glass-panel" 
+                  style={{ margin: 0, background: 'rgba(255,255,255,0.02)', padding: '10px 15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                  onClick={() => importSongFromUrl(targetTrackId, song)}
+                >
+                  <div>
+                    <b style={{ color: '#fff', fontSize: '0.9rem' }}>{song.title}</b>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '4px' }}>{song.artist}</div>
+                  </div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--primary-glow)', fontWeight: 'bold' }}>Import →</span>
+                </div>
+              ))}
+            </div>
+            <button className="glowing-button" onClick={() => setIsLibraryOpen(false)} style={{ width: '100%', margin: 0 }}>Close Library</button>
+          </div>
+        </div>
+      )}
 
     </div>
   );

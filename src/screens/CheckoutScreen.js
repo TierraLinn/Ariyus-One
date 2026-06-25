@@ -8,6 +8,21 @@ const CheckoutScreen = ({ selectedTier = 'Ariyus Pro', price = '$9.99/mo', handl
   const [isFlipped, setIsFlipped] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // Stripe 3D Secure Sandbox states
+  const [is3dSecureOpen, setIs3dSecureOpen] = useState(false);
+  const [smsCode, setSmsCode] = useState('');
+  const [otpError, setOtpError] = useState('');
+
+  const getCardBrand = (num) => {
+    const clean = num.replace(/\s+/g, '');
+    if (clean.startsWith('4')) return 'visa';
+    if (clean.startsWith('5')) return 'mastercard';
+    if (clean.startsWith('37') || clean.startsWith('34')) return 'amex';
+    if (clean.startsWith('6')) return 'discover';
+    return 'unknown';
+  };
+  const cardBrand = getCardBrand(cardNumber);
+
   const formatCardNumber = (value) => {
     const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
     const matches = v.match(/\d{4,16}/g);
@@ -41,11 +56,21 @@ const CheckoutScreen = ({ selectedTier = 'Ariyus Pro', price = '$9.99/mo', handl
     e.preventDefault();
     setIsProcessing(true);
 
-    // Simulate matrix processing delay
+    // Simulate elements credit validation, then open 3D Secure bank validation challenge
     setTimeout(() => {
       setIsProcessing(false);
+      setIs3dSecureOpen(true);
+    }, 1500);
+  };
+
+  const handleVerify3dSecure = (e) => {
+    e.preventDefault();
+    if (smsCode === '123456' || smsCode === '1234' || smsCode === '4242') {
+      setIs3dSecureOpen(false);
       handleUpgrade(selectedTier);
-    }, 2000);
+    } else {
+      setOtpError('Invalid authorization key. Use: "123456" to align.');
+    }
   };
 
   return (
@@ -66,7 +91,13 @@ const CheckoutScreen = ({ selectedTier = 'Ariyus Pro', price = '$9.99/mo', handl
           {/* Card Front */}
           <div className="card-front">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.75rem', letterSpacing: '1px', textTransform: 'uppercase', opacity: 0.8 }}>Ariyus Card</span>
+              <span style={{ fontSize: '0.75rem', letterSpacing: '1px', textTransform: 'uppercase', opacity: 0.8 }}>
+                {cardBrand === 'visa' && <b style={{ color: '#00f2ff', textShadow: '0 0 5px #00f2ff' }}>VISA</b>}
+                {cardBrand === 'mastercard' && <b style={{ color: '#ffb700', textShadow: '0 0 5px #ffb700' }}>MASTERCARD</b>}
+                {cardBrand === 'amex' && <b style={{ color: '#00ff87', textShadow: '0 0 5px #00ff87' }}>AMEX</b>}
+                {cardBrand === 'discover' && <b style={{ color: '#ff00c1', textShadow: '0 0 5px #ff00c1' }}>DISCOVER</b>}
+                {cardBrand === 'unknown' && 'Ariyus Card'}
+              </span>
               <div className="card-chip" />
             </div>
             <div className="card-number">
@@ -168,6 +199,65 @@ const CheckoutScreen = ({ selectedTier = 'Ariyus Pro', price = '$9.99/mo', handl
 
         </form>
       </div>
+
+      {/* Stripe 3D Secure modal simulator overlay */}
+      {is3dSecureOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, width: '100vw', height: '100vh',
+          background: 'rgba(2, 0, 26, 0.9)',
+          backdropFilter: 'blur(12px)',
+          display: 'grid',
+          placeItems: 'center',
+          zIndex: 99999,
+          padding: '20px'
+        }}>
+          <div className="glass-panel" style={{ maxWidth: '400px', width: '100%', borderColor: 'var(--secondary-glow)', textAlign: 'center', boxShadow: '0 0 30px rgba(255, 0, 193, 0.3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', alignItems: 'center', marginBottom: '15px' }}>
+              <span style={{ fontSize: '1.5rem' }}>🔒</span>
+              <h3 style={{ margin: 0, color: 'var(--secondary-glow)' }}>Stripe 3D Secure</h3>
+            </div>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', lineHeight: '1.4' }}>
+              A security verification challenge has been prompted by your bank. Enter the verification code sent to your registered device.
+            </p>
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '10px', borderRadius: '8px', fontSize: '0.8rem', color: '#fff', margin: '15px 0', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <span>Merchant: <b>Ariyus-One sound Alignment</b></span><br/>
+              <span>Amount: <b>{price}</b></span>
+            </div>
+            
+            <form onSubmit={handleVerify3dSecure} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <input 
+                  type="text" 
+                  placeholder="Enter Code (use: 123456)" 
+                  value={smsCode} 
+                  onChange={e => { setSmsCode(e.target.value); setOtpError(''); }} 
+                  className="glass-input" 
+                  style={{ textAlign: 'center', fontSize: '1.2rem', letterSpacing: '4px', margin: 0 }}
+                  required 
+                />
+                {otpError && (
+                  <div style={{ color: '#ff3b30', fontSize: '0.75rem', marginTop: '6px' }}>{otpError}</div>
+                )}
+              </div>
+              
+              <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
+                <button type="submit" className="glowing-button secondary" style={{ margin: 0, width: '100%' }}>
+                  Verify & Upgrade
+                </button>
+                <button 
+                  type="button" 
+                  className="glowing-button" 
+                  onClick={() => { setIs3dSecureOpen(false); setIsProcessing(false); }}
+                  style={{ margin: 0, background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.2)', color: '#fff', textShadow: 'none' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

@@ -3,7 +3,7 @@ import VoiceSignatureCard from '../components/VoiceSignatureCard';
 import { db } from '../firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
-const Profile = ({ userData, handleSignOut, navigate, theme, setTheme }) => {
+const Profile = ({ userData, handleSignOut, navigate, theme, setTheme, handleUpgrade }) => {
   const [recordings, setRecordings] = useState([]);
   const [playingId, setPlayingId] = useState(null);
   const audioRef = React.useRef(null);
@@ -235,6 +235,74 @@ const Profile = ({ userData, handleSignOut, navigate, theme, setTheme }) => {
           </p>
         )}
       </div>
+
+      {/* Stripe Billing & Subscriptions portal */}
+      {tier !== 'Free' ? (
+        <div className="glass-panel" style={{ borderLeft: '4px solid var(--primary-glow)' }}>
+          <h3 style={{ color: 'var(--primary-glow)', textShadow: '0 0 6px var(--primary-glow)' }}>Billing & Active Subscriptions</h3>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem', margin: '4px 0 15px' }}>
+            Manage your subscription credentials, download transaction logs, or update billing info.
+          </p>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '15px' }}>
+            <div style={{ background: 'rgba(0,0,0,0.15)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>CURRENT PLAN</span>
+              <div style={{ fontSize: '1.15rem', fontWeight: 'bold', color: '#fff', marginTop: '4px' }}>{tier}</div>
+              <span style={{ fontSize: '0.7rem', color: '#00ff87', fontWeight: 'bold' }}>✓ Active Status</span>
+            </div>
+            <div style={{ background: 'rgba(0,0,0,0.15)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>BILLING METHOD</span>
+              <div style={{ fontSize: '1.15rem', fontWeight: 'bold', color: '#fff', marginTop: '4px' }}>Visa •••• 4242</div>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Expiry: 12/28</span>
+            </div>
+          </div>
+
+          {/* Invoice logs list */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '8px', marginBottom: '15px', border: '1px solid rgba(255,255,255,0.03)' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-dim)' }}>PAST TRANSACTIONS</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#fff' }}>
+              <span>Invoice #AR-4091 (Paid)</span>
+              <span>{tier === 'Creator' ? '$19.99' : tier === 'Ariyus Pro' ? '$9.99' : '$4.99'}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#fff' }}>
+              <span>Invoice #AR-3112 (Paid)</span>
+              <span>{tier === 'Creator' ? '$19.99' : tier === 'Ariyus Pro' ? '$9.99' : '$4.99'}</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button 
+              className="glowing-button secondary" 
+              style={{ margin: 0, padding: '8px 15px', fontSize: '0.8rem' }}
+              onClick={() => {
+                if (window.confirm("Are you sure you want to cancel your Ariyus subscription? This will instantly downgrade you to the Free Plan and lock active faders inside the DAW Workstation.")) {
+                  handleUpgrade('Free');
+                  alert("Subscription successfully canceled. Account downgraded to Free tier.");
+                }
+              }}
+            >
+              Cancel Membership
+            </button>
+            <button 
+              className="glowing-button" 
+              style={{ margin: 0, padding: '8px 15px', fontSize: '0.8rem', borderColor: 'var(--glass-border)', background: 'transparent' }}
+              onClick={() => navigate('Upgrade')}
+            >
+              Update Card Details
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="glass-panel" style={{ borderLeft: '4px solid var(--text-dim)' }}>
+          <h3>Billing & Active Subscriptions</h3>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem', margin: '4px 0 15px' }}>
+            You are currently on the <b>Free Tier Plan</b>. Upgrade to unlock all effects, DAW multi-track timelines, and bio-frequency diagnostic coaching.
+          </p>
+          <button className="glowing-button" onClick={() => navigate('Upgrade')} style={{ margin: 0, padding: '8px 20px', fontSize: '0.8rem' }}>
+            Explore Premium Tiers
+          </button>
+        </div>
+      )}
 
     </div>
   );
