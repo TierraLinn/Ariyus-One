@@ -118,6 +118,7 @@ const createPitchShifterNode = (ctx, pitchRatio) => {
 const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userData, activeChallenge, handleCompleteChallenge }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isAIHarmonized, setIsAIHarmonized] = useState(false);
   
   // Mixing & DSP States
   const [voiceVol, setVoiceVol] = useState(85);
@@ -197,6 +198,12 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
   // Pitch Shifter nodes
   const voicePitchShifterRef = useRef(null);
   const backingPitchShifterRef = useRef(null);
+  const highHarmonyPitchShifterRef = useRef(null);
+  const lowHarmonyPitchShifterRef = useRef(null);
+  const highHarmonyGainRef = useRef(null);
+  const lowHarmonyGainRef = useRef(null);
+  const highHarmonyPannerRef = useRef(null);
+  const lowHarmonyPannerRef = useRef(null);
 
   // Analysers
   const voiceAnalyserRef = useRef(null);
@@ -462,6 +469,11 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       solfeggioGainRef.current = ctx.createGain();
       solfeggioPannerRef.current = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
 
+      highHarmonyGainRef.current = ctx.createGain();
+      highHarmonyPannerRef.current = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+      lowHarmonyGainRef.current = ctx.createGain();
+      lowHarmonyPannerRef.current = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+
       // Analysers
       voiceAnalyserRef.current = ctx.createAnalyser();
       voiceAnalyserRef.current.fftSize = 256;
@@ -551,9 +563,37 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       voicePitchShifterRef.current = createPitchShifterNode(ctx, pitchRatio);
       backingPitchShifterRef.current = createPitchShifterNode(ctx, pitchRatio);
 
+      // AI Harmonizers Setup (+4 and -12 semitones relative to lead pitch ratio)
+      const highPitchRatio = pitchRatio * Math.pow(2, 4 / 12);
+      highHarmonyPitchShifterRef.current = createPitchShifterNode(ctx, highPitchRatio);
+
+      const lowPitchRatio = pitchRatio * Math.pow(2, -12 / 12);
+      lowHarmonyPitchShifterRef.current = createPitchShifterNode(ctx, lowPitchRatio);
+
       // --- Vocal routing connections ---
       voiceSourceRef.current.connect(voicePitchShifterRef.current.input);
       voicePitchShifterRef.current.output.connect(highpassFilterRef.current);
+      
+      // Route vocal to backing harmony streams
+      highpassFilterRef.current.connect(highHarmonyPitchShifterRef.current.input);
+      highpassFilterRef.current.connect(lowHarmonyPitchShifterRef.current.input);
+
+      highHarmonyPitchShifterRef.current.output.connect(highHarmonyGainRef.current);
+      lowHarmonyPitchShifterRef.current.output.connect(lowHarmonyGainRef.current);
+
+      let finalHighHarmonyNode = highHarmonyGainRef.current;
+      if (highHarmonyPannerRef.current) {
+        highHarmonyGainRef.current.connect(highHarmonyPannerRef.current);
+        finalHighHarmonyNode = highHarmonyPannerRef.current;
+      }
+      finalHighHarmonyNode.connect(voiceAnalyserRef.current);
+
+      let finalLowHarmonyNode = lowHarmonyGainRef.current;
+      if (lowHarmonyPannerRef.current) {
+        lowHarmonyGainRef.current.connect(lowHarmonyPannerRef.current);
+        finalLowHarmonyNode = lowHarmonyPannerRef.current;
+      }
+      finalLowHarmonyNode.connect(voiceAnalyserRef.current);
       
       // Splits for FX
       highpassFilterRef.current.connect(waveshaperNodeRef.current);
@@ -654,6 +694,14 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       backingPitchShifterRef.current.stop();
       backingPitchShifterRef.current = null;
     }
+    if (highHarmonyPitchShifterRef.current) {
+      highHarmonyPitchShifterRef.current.stop();
+      highHarmonyPitchShifterRef.current = null;
+    }
+    if (lowHarmonyPitchShifterRef.current) {
+      lowHarmonyPitchShifterRef.current.stop();
+      lowHarmonyPitchShifterRef.current = null;
+    }
   };
 
   // Rebuild audio engine dynamically on Solfeggio target frequency modifications
@@ -721,23 +769,32 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       const vol = isDryActive ? 0.0 : soundstage.solfeggio.y * ((freqVol / 100) * 0.45);
       solfeggioGainRef.current.gain.setValueAtTime(vol, ctx.currentTime);
     }
+
+    // Harmony volume gains
+    if (highHarmonyGainRef.current) {
+      const vol = (isAIHarmonized && !isDryActive) ? soundstage.voice.y * (voiceVol / 100) * 0.6 : 0.0;
+      highHarmonyGainRef.current.gain.setValueAtTime(vol, ctx.currentTime);
+    }
+    if (lowHarmonyGainRef.current) {
+      const vol = (isAIHarmonized && !isDryActive) ? soundstage.voice.y * (voiceVol / 100) * 0.6 : 0.0;
+      lowHarmonyGainRef.current.gain.setValueAtTime(vol, ctx.currentTime);
+    }
   };
 
   // Automatically sweep the Solfeggio pan left-to-right to create orbital spatial audio
   const startBinauralOrbit = () => {
     clearInterval(pannerOrbitIntervalRef.current);
-    if (!activeEffects.includes('Binaural Beating')) return;
+    if (!activeEffects.includes('Binaural Beating') && !isAIHarmonized) return;
 
     let time = 0;
     pannerOrbitIntervalRef.current = setInterval(() => {
       const ctx = audioCtxRef.current;
-      if (ctx && solfeggioPannerRef.current) {
+      if (!ctx) return;
+
+      if (activeEffects.includes('Binaural Beating') && solfeggioPannerRef.current) {
         // Orbit panner sinusoidally
         const panVal = Math.sin(time);
         solfeggioPannerRef.current.pan.setValueAtTime(panVal, ctx.currentTime);
-        time += 0.05;
-
-        // Visual update on Soundstage coordinates
         setSoundstage(prev => ({
           ...prev,
           solfeggio: {
@@ -746,6 +803,19 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
           }
         }));
       }
+
+      if (isAIHarmonized) {
+        // Binaural orbits panned sinusoidally in opposite directions
+        const panVal = Math.sin(time * 0.7);
+        if (lowHarmonyPannerRef.current) {
+          lowHarmonyPannerRef.current.pan.setValueAtTime(panVal, ctx.currentTime);
+        }
+        if (highHarmonyPannerRef.current) {
+          highHarmonyPannerRef.current.pan.setValueAtTime(-panVal, ctx.currentTime);
+        }
+      }
+
+      time += 0.03;
     }, 50);
   };
 
@@ -753,7 +823,20 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
   useEffect(() => {
     syncSoundstageToNodes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [soundstage, voiceVol, trackVol, freqVol, isDryActive]);
+  }, [soundstage, voiceVol, trackVol, freqVol, isDryActive, isAIHarmonized]);
+
+  // Handle live AI Harmonizer orbital panner toggles
+  useEffect(() => {
+    if (isPlaying) {
+      if (isAIHarmonized || activeEffects.includes('Binaural Beating')) {
+        startBinauralOrbit();
+      } else {
+        clearInterval(pannerOrbitIntervalRef.current);
+        syncSoundstageToNodes();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAIHarmonized]);
 
   // Handle active preset/effects changes on nodes
   useEffect(() => {
@@ -976,6 +1059,69 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
           sCtx.fillStyle = '#fff';
           sCtx.fillText(node.label, nodeX - 35, nodeY - 22);
         });
+
+        // Draw orbital harmony nodes dynamically on canvas
+        if (isAIHarmonized) {
+          const orbitTime = Date.now() / 1000;
+          const lowPan = Math.sin(orbitTime * 0.7);
+          const highPan = -Math.sin(orbitTime * 0.7);
+
+          const lowX = ((lowPan + 1) / 2) * sWidth;
+          const lowY = 0.65 * sHeight;
+          const highX = ((highPan + 1) / 2) * sWidth;
+          const highY = 0.55 * sHeight;
+
+          sCtx.save();
+          // Draw Low Harmony
+          sCtx.strokeStyle = '#ff00c1';
+          sCtx.lineWidth = 1.2;
+          sCtx.beginPath();
+          sCtx.arc(lowX, lowY, 12 + Math.sin(Date.now() / 250) * 2, 0, Math.PI * 2);
+          sCtx.stroke();
+          
+          sCtx.fillStyle = '#ff00c1';
+          sCtx.beginPath();
+          sCtx.arc(lowX, lowY, 4, 0, Math.PI * 2);
+          sCtx.fill();
+          
+          sCtx.font = '9px Orbitron, sans-serif';
+          sCtx.fillStyle = '#ff00c1';
+          sCtx.fillText('Low Harmony (-12st)', lowX - 50, lowY - 18);
+
+          // Draw High Harmony
+          sCtx.strokeStyle = '#00ff87';
+          sCtx.beginPath();
+          sCtx.arc(highX, highY, 12 + Math.sin(Date.now() / 250) * 2, 0, Math.PI * 2);
+          sCtx.stroke();
+          
+          sCtx.fillStyle = '#00ff87';
+          sCtx.beginPath();
+          sCtx.arc(highX, highY, 4, 0, Math.PI * 2);
+          sCtx.fill();
+          
+          sCtx.font = '9px Orbitron, sans-serif';
+          sCtx.fillStyle = '#00ff87';
+          sCtx.fillText('High Harmony (+4st)', highX - 50, highY - 18);
+
+          // Connect virtual nodes to main lead vocal node
+          const voiceNode = soundstage.voice;
+          const voiceX = voiceNode.x * sWidth;
+          const voiceY = voiceNode.y * sHeight;
+
+          sCtx.strokeStyle = 'rgba(255, 0, 193, 0.22)';
+          sCtx.setLineDash([3, 3]);
+          sCtx.beginPath();
+          sCtx.moveTo(voiceX, voiceY);
+          sCtx.lineTo(lowX, lowY);
+          sCtx.stroke();
+
+          sCtx.strokeStyle = 'rgba(0, 255, 135, 0.22)';
+          sCtx.beginPath();
+          sCtx.moveTo(voiceX, voiceY);
+          sCtx.lineTo(highX, highY);
+          sCtx.stroke();
+          sCtx.restore();
+        }
       }
 
       // --- Draw Chakra Biofield Lightfield ---
@@ -1606,6 +1752,15 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
             onClick={() => setIsDryActive(!isDryActive)}
           >
             {isDryActive ? '✓ Dry Vocal (Direct)' : '✦ Solfeggio Wet Mix'}
+          </button>
+
+          <button 
+            className={`glowing-button secondary ${isAIHarmonized ? 'active' : ''}`}
+            onClick={() => setIsAIHarmonized(!isAIHarmonized)}
+            disabled={!currentRecording}
+            style={{ margin: 0 }}
+          >
+            {isAIHarmonized ? '✓ AI Harmonizer ON' : '✦ AI Orchestrate'}
           </button>
         </div>
       </div>

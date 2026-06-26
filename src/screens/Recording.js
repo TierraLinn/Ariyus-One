@@ -38,6 +38,7 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
   const syncPlaybackTimerRef = useRef(null);
   const lyricsContainerRef = useRef(null);
   const backingAudioElementRef = useRef(null);
+  const prompterCanvasRef = useRef(null);
 
   // Autocorrelation Pitch Tracker helper for live scanning during recording
   const getPitchFromStream = (analyserNode, sampleRate) => {
@@ -153,6 +154,126 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
       }
     }
   }, [recordTime, isRecording, syncedTimestamps]);
+
+  // HTML5 Canvas lyric scrolling visualizer loop
+  useEffect(() => {
+    const canvas = prompterCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let animationFrameId;
+
+    const render = () => {
+      const width = canvas.width = canvas.offsetWidth || 500;
+      const height = canvas.height = canvas.offsetHeight || 180;
+      const centerY = height / 2;
+      const lineSpacing = 35;
+
+      ctx.clearRect(0, 0, width, height);
+
+      // Gradient background matching app theme
+      const grad = ctx.createLinearGradient(0, 0, 0, height);
+      grad.addColorStop(0, '#040318');
+      grad.addColorStop(0.5, '#070630');
+      grad.addColorStop(1, '#040318');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, width, height);
+
+      // Guide lines for the Active Zone
+      ctx.strokeStyle = 'rgba(0, 242, 255, 0.12)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, centerY - 22);
+      ctx.lineTo(width, centerY - 22);
+      ctx.moveTo(0, centerY + 22);
+      ctx.lineTo(width, centerY + 22);
+      ctx.stroke();
+
+      if (syncedTimestamps.length > 0) {
+        // Track the current active line index
+        const active = syncedTimestamps.reduce((acc, current) => {
+          if (recordTime >= current.time) {
+            return current.idx;
+          }
+          return acc;
+        }, 0);
+
+        const currentLine = syncedTimestamps[active];
+        const nextLine = syncedTimestamps[active + 1];
+        
+        let progress = 0;
+        if (currentLine && nextLine) {
+          const duration = nextLine.time - currentLine.time;
+          if (duration > 0) {
+            progress = Math.max(0, Math.min(1, (recordTime - currentLine.time) / duration));
+          }
+        }
+        const smoothActiveIdx = active + progress;
+
+        syncedTimestamps.forEach((item) => {
+          const y = centerY + (item.idx - smoothActiveIdx) * lineSpacing;
+          
+          if (y > -20 && y < height + 20) {
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            if (item.idx === active) {
+              // Calculate alignment pitch score
+              let alignment = 0;
+              if (livePitch) {
+                let minDiff = Infinity;
+                const octaves = [targetHz / 2, targetHz, targetHz * 2];
+                octaves.forEach(freq => {
+                  const diff = Math.abs(livePitch - freq);
+                  if (diff < minDiff) minDiff = diff;
+                });
+                alignment = Math.max(0, Math.min(100, Math.round((1 - minDiff / targetHz) * 100)));
+              }
+
+              const isAligned = alignment >= 80;
+              
+              ctx.save();
+              ctx.font = 'bold 18px "Outfit", sans-serif';
+              ctx.fillStyle = isAligned ? '#00f2ff' : '#ff9f00';
+              ctx.shadowBlur = isAligned ? 15 : 8;
+              ctx.shadowColor = isAligned ? 'rgba(0, 242, 255, 0.8)' : 'rgba(255, 159, 0, 0.8)';
+              
+              // Draw centered text
+              ctx.fillText(item.text, width / 2, y);
+              
+              // Micro feedback text
+              if (isRecording) {
+                ctx.restore();
+                ctx.save();
+                ctx.font = 'bold 9px "Orbitron", sans-serif';
+                ctx.fillStyle = isAligned ? '#00ff87' : '#ff3b30';
+                ctx.fillText(`PITCH MATCH: ${alignment}%`, width / 2, y - 24);
+              }
+              
+              ctx.restore();
+            } else if (item.idx < active) {
+              // Passed lines
+              ctx.font = '14px "Inter", sans-serif';
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+              ctx.fillText(item.text, width / 2, y);
+            } else {
+              // Future lines
+              ctx.font = '15px "Inter", sans-serif';
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+              ctx.fillText(item.text, width / 2, y);
+            }
+          }
+        });
+      }
+
+      animationFrameId = requestAnimationFrame(render);
+    };
+
+    render();
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [syncedTimestamps, recordTime, livePitch, isRecording, targetHz]);
 
   // Solfeggio Hum oscillator startup
   const startHumOscillator = (ctx) => {
@@ -622,16 +743,17 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
             </div>
           </div>
         ) : (
-          <div className="karaoke-container" ref={lyricsContainerRef}>
-            {lyricsLines.map((line, idx) => (
-              <div 
-                key={idx} 
-                className={`karaoke-line ${idx === activeLineIdx ? 'active' : idx < activeLineIdx ? 'passed' : ''}`}
-              >
-                {line}
-              </div>
-            ))}
-          </div>
+          <canvas 
+            ref={prompterCanvasRef} 
+            style={{ 
+              width: '100%', 
+              height: '180px', 
+              borderRadius: '8px', 
+              border: '1px solid var(--glass-border)',
+              background: '#070630',
+              display: 'block'
+            }} 
+          />
         )}
       </div>
 
