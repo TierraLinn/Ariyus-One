@@ -1,5 +1,45 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getGrading, getPlaybackRateForFrequency } from '../utils/vocalDSP';
+import { getGrading } from '../utils/vocalDSP';
+
+const createPitchShifterNode = (ctx, pitchRatio) => {
+  if (Math.abs(pitchRatio - 1.0) < 0.005) {
+    const gain = ctx.createGain();
+    return gain;
+  }
+
+  const bufferSize = 16384;
+  const node = ctx.createScriptProcessor(2048, 1, 1);
+  const buffer = new Float32Array(bufferSize);
+  let writePtr = 0;
+  let readPtr = 0;
+
+  node.onaudioprocess = (e) => {
+    const input = e.inputBuffer.getChannelData(0);
+    const output = e.outputBuffer.getChannelData(0);
+
+    for (let i = 0; i < input.length; i++) {
+      buffer[writePtr] = input[i];
+      writePtr = (writePtr + 1) % bufferSize;
+
+      // Linear interpolation resampling
+      const baseIdx = Math.floor(readPtr);
+      const nextIdx = (baseIdx + 1) % bufferSize;
+      const frac = readPtr - baseIdx;
+      const val = (1 - frac) * buffer[baseIdx] + frac * buffer[nextIdx];
+
+      output[i] = val;
+      readPtr = (readPtr + pitchRatio) % bufferSize;
+
+      // Restrict read distance relative to write pointer
+      const distance = (writePtr - readPtr + bufferSize) % bufferSize;
+      if (distance > 4096 || distance < 512) {
+        readPtr = (writePtr - 2048 + bufferSize) % bufferSize;
+      }
+    }
+  };
+
+  return node;
+};
 
 const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -104,6 +144,10 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
     peakingNode.Q.setValueAtTime(8.0, ctx.currentTime);
     peakingNodeRef.current = peakingNode;
 
+    const pitchRatio = selectedFreq / 440;
+    const voicePitchShifter = createPitchShifterNode(ctx, pitchRatio);
+    const trackPitchShifter = createPitchShifterNode(ctx, pitchRatio);
+
     // Autotune snap phase modulation nodes
     const autotuneNode = ctx.createDelay(1.0);
     const autotuneModulator = ctx.createOscillator();
@@ -124,7 +168,7 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
       const waveshaper = ctx.createWaveShaper();
       waveshaper.curve = makeDistortionCurve(40);
       peakingNode.connect(waveshaper);
-      waveshaper.connect(voicePanNode);
+      waveshaper.connect(voicePitchShifter);
     } else if (selectedFilter === 'reverb') {
       const delay = ctx.createDelay();
       const feedback = ctx.createGain();
@@ -135,8 +179,8 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
       delay.connect(feedback);
       feedback.connect(delay);
 
-      peakingNode.connect(voicePanNode);
-      delay.connect(voicePanNode);
+      peakingNode.connect(voicePitchShifter);
+      delay.connect(voicePitchShifter);
     } else if (selectedFilter === 'echo') {
       const delay = ctx.createDelay();
       const feedback = ctx.createGain();
@@ -147,8 +191,8 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
       delay.connect(feedback);
       feedback.connect(delay);
 
-      peakingNode.connect(voicePanNode);
-      delay.connect(voicePanNode);
+      peakingNode.connect(voicePitchShifter);
+      delay.connect(voicePitchShifter);
     } else if (selectedFilter === 'denoise') {
       const hp = ctx.createBiquadFilter();
       hp.type = 'highpass';
@@ -160,16 +204,18 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
 
       peakingNode.connect(hp);
       hp.connect(lp);
-      lp.connect(voicePanNode);
+      lp.connect(voicePitchShifter);
     } else {
-      peakingNode.connect(voicePanNode);
+      peakingNode.connect(voicePitchShifter);
     }
 
+    voicePitchShifter.connect(voicePanNode);
     voicePanNode.connect(ctx.destination);
 
     // Backing track routing
     trackSource.connect(trackDelayNode);
-    trackDelayNode.connect(trackPanNode);
+    trackDelayNode.connect(trackPitchShifter);
+    trackPitchShifter.connect(trackPanNode);
     trackPanNode.connect(ctx.destination);
 
     return () => {
@@ -261,12 +307,11 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
     }
   }, [vocalDelay]);
 
-  // Handle Pitch shift adjustments via playback rates
+  // Keep playback speed locked at exactly 1.0x normal speed to prevent timing/sync drift
   useEffect(() => {
     if (!voiceAudioRef.current || !trackAudioRef.current) return;
-    const rate = getPlaybackRateForFrequency(selectedFreq);
-    voiceAudioRef.current.playbackRate = rate;
-    trackAudioRef.current.playbackRate = rate;
+    voiceAudioRef.current.playbackRate = 1.0;
+    trackAudioRef.current.playbackRate = 1.0;
   }, [selectedFreq]);
 
   if (!currentRecording) {
