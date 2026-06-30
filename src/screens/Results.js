@@ -72,6 +72,8 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
   const trackDelayNodeRef = useRef(null);
   const peakingNodeRef = useRef(null);
   const carrierOscRef = useRef(null);
+  const [showDNACard, setShowDNACard] = useState(false);
+  const dnaCanvasRef = useRef(null);
 
   const { selectedSong, score = 75, playbackUrl, pitchHistory = [] } = currentRecording || {};
   const lyricsLines = React.useMemo(() => {
@@ -316,6 +318,139 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
     voiceAudioRef.current.playbackRate = 1.0;
     trackAudioRef.current.playbackRate = 1.0;
   }, [selectedFreq]);
+
+  useEffect(() => {
+    if (!showDNACard) return;
+    const canvas = dnaCanvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width = 400;
+    const height = canvas.height = 400;
+
+    // Clear background with solid dark cosmic blue
+    ctx.fillStyle = '#06041e';
+    ctx.fillRect(0, 0, width, height);
+
+    // Draw cosmic star dust background particles
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+    for (let i = 0; i < 60; i++) {
+      const sx = Math.random() * width;
+      const sy = Math.random() * height;
+      const r = Math.random() * 1.5;
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Determine color gradients matching active Solfeggio standard
+    let primaryGlow = '#00f2ff'; // throat (blue)
+    let secondaryGlow = '#b200ff'; // crown (purple)
+    
+    if (selectedFreq === 396) {
+      primaryGlow = '#ff003b'; // red
+      secondaryGlow = '#ff7000';
+    } else if (selectedFreq === 417) {
+      primaryGlow = '#ff7000'; // orange
+      secondaryGlow = '#ffcc00';
+    } else if (selectedFreq === 432 || selectedFreq === 528) {
+      primaryGlow = '#00ff87'; // green
+      secondaryGlow = '#00f2ff';
+    } else if (selectedFreq === 741) {
+      primaryGlow = '#b200ff'; // violet
+      secondaryGlow = '#ff00c1';
+    }
+
+    // Center of mandala
+    const cx = width / 2;
+    const cy = height / 2;
+
+    // Draw glowing sacred geometry grid
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, width * 0.4, 0, Math.PI * 2);
+    ctx.stroke();
+
+    for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 6) {
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(angle) * (width * 0.42), cy + Math.sin(angle) * (width * 0.42));
+      ctx.lineTo(cx - Math.cos(angle) * (width * 0.42), cy - Math.sin(angle) * (width * 0.42));
+      ctx.stroke();
+    }
+
+    // Draw overlapping Mandala Petals.
+    // The number of petals is mathematically shaped by their score!
+    const numPetals = 8 + Math.floor((score / 100) * 16);
+    const maxRadius = width * 0.35;
+
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = primaryGlow;
+
+    for (let rIdx = 3; rIdx > 0; rIdx--) {
+      const layerRadius = maxRadius * (rIdx / 3);
+      const grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, layerRadius);
+      grad.addColorStop(0, 'rgba(6, 4, 30, 0.15)');
+      grad.addColorStop(1, rIdx === 3 ? primaryGlow : secondaryGlow);
+
+      for (let i = 0; i < numPetals; i++) {
+        const startAngle = (i * Math.PI * 2) / numPetals;
+        const endAngle = startAngle + (Math.PI * 2) / numPetals;
+        const midAngle = (startAngle + endAngle) / 2;
+
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 1.5 + rIdx * 0.5;
+
+        // Draw petal curve
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        
+        // Control points for outer curve
+        const cp1x = cx + Math.cos(startAngle) * (layerRadius * 0.85);
+        const cp1y = cy + Math.sin(startAngle) * (layerRadius * 0.85);
+        const destx = cx + Math.cos(midAngle) * layerRadius;
+        const desty = cy + Math.sin(midAngle) * layerRadius;
+        
+        ctx.quadraticCurveTo(cp1x, cp1y, destx, desty);
+
+        const cp2x = cx + Math.cos(endAngle) * (layerRadius * 0.85);
+        const cp2y = cy + Math.sin(endAngle) * (layerRadius * 0.85);
+        ctx.quadraticCurveTo(cp2x, cp2y, cx, cy);
+        ctx.stroke();
+      }
+    }
+
+    // Draw central glowing energy nodes
+    ctx.shadowColor = '#fff';
+    ctx.shadowBlur = 15;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = primaryGlow;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 20, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Reset shadow blur
+    ctx.shadowBlur = 0;
+
+    // Draw overlay texts: title/artist & stats directly on the canvas
+    ctx.font = 'bold 12px "Orbitron", sans-serif';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+    ctx.textAlign = 'center';
+    ctx.fillText("ARIYUS-ONE VOCAL DNA BLUEPRINT", cx, 30);
+
+    ctx.font = 'bold 14px "Inter", sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`${selectedSong?.title || 'Sing Session'}`, cx, height - 38);
+
+    ctx.font = 'normal 10px "Orbitron", sans-serif';
+    ctx.fillStyle = primaryGlow;
+    ctx.fillText(`SCORE: ${score} | CALIBRATION: ${selectedFreq}Hz`, cx, height - 18);
+  }, [showDNACard, score, selectedFreq, selectedSong]);
 
   if (!currentRecording) {
     return (
@@ -613,6 +748,9 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
             <button className="glowing-button" onClick={publishToFeed} style={{ flexGrow: 1, margin: 0 }}>
               🚀 Sync to Feed
             </button>
+            <button className="glowing-button secondary" onClick={() => setShowDNACard(true)} style={{ margin: 0, borderColor: 'var(--primary-glow)', color: 'var(--primary-glow)' }}>
+              🧬 Vocal DNA Mandala
+            </button>
             <button className="glowing-button secondary" onClick={saveToDrafts} style={{ margin: 0 }}>
               💾 Save to Drafts
             </button>
@@ -729,6 +867,69 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Cosmic Vocal DNA Card Modal */}
+      {showDNACard && (
+        <div className="custom-alert-overlay" onClick={() => setShowDNACard(false)}>
+          <div className="custom-alert-box glass-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', width: '90%', padding: '24px', textAlign: 'center' }}>
+            <h3 style={{ fontFamily: '"Orbitron", sans-serif', color: 'var(--primary-glow)', textShadow: '0 0 10px var(--primary-glow)', marginBottom: '8px' }}>
+              🧬 COSMIC VOCAL DNA CARD
+            </h3>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginBottom: '15px' }}>
+              Your unique performance-reactive sacred geometry Mandala generated from vocal vibrations.
+            </p>
+
+            <div style={{ background: '#06041e', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', padding: '12px', display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
+              <canvas ref={dnaCanvasRef} style={{ width: '300px', height: '300px', borderRadius: '8px', display: 'block', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }} />
+            </div>
+
+            {/* Vocal Statistics HUD */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', textAlign: 'left', marginBottom: '20px', fontSize: '0.78rem', background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div>
+                <span style={{ color: 'var(--text-dim)', display: 'block' }}>Vocal Clearness (HNR)</span>
+                <strong style={{ color: '#fff', fontSize: '0.85rem' }}>{(currentRecording?.hnr || 18.5).toFixed(1)} dB</strong>
+              </div>
+              <div>
+                <span style={{ color: 'var(--text-dim)', display: 'block' }}>Pitch Variation (Jitter)</span>
+                <strong style={{ color: '#fff', fontSize: '0.85rem' }}>{(currentRecording?.jitter || 1.2).toFixed(2)}%</strong>
+              </div>
+              <div>
+                <span style={{ color: 'var(--text-dim)', display: 'block' }}>Vowel Resonance</span>
+                <strong style={{ color: 'var(--primary-glow)', fontSize: '0.85rem' }}>Throat & Heart Activation</strong>
+              </div>
+              <div>
+                <span style={{ color: 'var(--text-dim)', display: 'block' }}>Mindset Biorhythm</span>
+                <strong style={{ color: 'var(--secondary-glow)', fontSize: '0.85rem' }}>Alpha Flow State</strong>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button 
+                className="glowing-button" 
+                onClick={() => {
+                  const canvas = dnaCanvasRef.current;
+                  if (canvas) {
+                    const link = document.createElement('a');
+                    link.download = `${selectedSong?.title || 'Sing'}_Vocal_DNA.png`;
+                    link.href = canvas.toDataURL('image/png');
+                    link.click();
+                  }
+                }}
+                style={{ flexGrow: 1, margin: 0 }}
+              >
+                💾 Download PNG
+              </button>
+              <button 
+                className="glowing-button secondary" 
+                onClick={() => setShowDNACard(false)}
+                style={{ margin: 0 }}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
