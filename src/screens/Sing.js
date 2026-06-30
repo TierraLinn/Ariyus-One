@@ -209,10 +209,9 @@ const SongLibrary = ({ navigate, setCurrentRecording }) => {
                     grade: null,
                     score: 0,
                     recordingData: null,
-                    duetPartner: {
-                      userDisplayName: 'Celeste Vocalist',
-                      grade: { letter: 'A+', color: '#00f2ff' }
-                    }
+                    isDuet: true,
+                    partnerName: 'Celeste Vocalist',
+                    partnerVocalUrl: selectedSongHub.id === 's1' ? 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Newness.mp3' : 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Happy%20Life.mp3'
                   });
                   navigate('Recording');
                   setSelectedSongHub(null);

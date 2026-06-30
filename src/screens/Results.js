@@ -63,17 +63,22 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
   // Audio elements
   const voiceAudioRef = useRef(null);
   const trackAudioRef = useRef(null);
+  const partnerAudioRef = useRef(null);
 
   // Web Audio Context nodes
   const audioCtxRef = useRef(null);
   const voicePanNodeRef = useRef(null);
   const trackPanNodeRef = useRef(null);
+  const partnerPanNodeRef = useRef(null);
   const voiceDelayNodeRef = useRef(null);
   const trackDelayNodeRef = useRef(null);
+  const partnerDelayNodeRef = useRef(null);
   const peakingNodeRef = useRef(null);
   const carrierOscRef = useRef(null);
   const [showDNACard, setShowDNACard] = useState(false);
   const dnaCanvasRef = useRef(null);
+  const [partnerVol, setPartnerVol] = useState(80);
+  const [partnerPan, setPartnerPan] = useState(-0.3);
 
   const { selectedSong, score = 75, playbackUrl, pitchHistory = [] } = currentRecording || {};
   const lyricsLines = React.useMemo(() => {
@@ -107,6 +112,8 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
     trackAudio.loop = true;
     trackAudioRef.current = trackAudio;
 
+    let partnerAudio = null;
+
     // Web Audio setup
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     const ctx = new AudioContext();
@@ -138,6 +145,30 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
 
     // Connect voice with selected filter chain
     voiceSource.connect(vocalDelayNode);
+
+    // Setup Duet Partner Vocal routing path
+    if (currentRecording.isDuet && currentRecording.partnerVocalUrl) {
+      partnerAudio = new Audio(currentRecording.partnerVocalUrl);
+      partnerAudio.crossOrigin = "anonymous";
+      partnerAudio.loop = true;
+      partnerAudioRef.current = partnerAudio;
+
+      const partnerSource = ctx.createMediaElementSource(partnerAudio);
+      const partnerPanNode = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
+      partnerPanNodeRef.current = partnerPanNode;
+
+      const partnerDelayNode = ctx.createDelay(1.0);
+      partnerDelayNodeRef.current = partnerDelayNode;
+      partnerDelayNode.delayTime.setValueAtTime(0, t);
+
+      const pitchRatio = selectedFreq / 440;
+      const partnerPitchShifter = createPitchShifterNode(ctx, pitchRatio);
+
+      partnerSource.connect(partnerDelayNode);
+      partnerDelayNode.connect(partnerPitchShifter);
+      partnerPitchShifter.connect(partnerPanNode);
+      partnerPanNode.connect(ctx.destination);
+    }
 
     // Solfeggio peaking resonance node
     const peakingNode = ctx.createBiquadFilter();
@@ -222,6 +253,9 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
     return () => {
       voiceAudio.pause();
       trackAudio.pause();
+      if (partnerAudio) {
+        partnerAudio.pause();
+      }
       if (carrierOscRef.current) {
         try { carrierOscRef.current.stop(); } catch (e) {}
         carrierOscRef.current = null;
@@ -287,7 +321,8 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
   useEffect(() => {
     if (voiceAudioRef.current) voiceAudioRef.current.volume = voiceVol / 100;
     if (trackAudioRef.current) trackAudioRef.current.volume = trackVol / 100;
-  }, [voiceVol, trackVol]);
+    if (partnerAudioRef.current) partnerAudioRef.current.volume = partnerVol / 100;
+  }, [voiceVol, trackVol, partnerVol]);
 
   useEffect(() => {
     if (voicePanNodeRef.current && voicePanNodeRef.current.pan) {
@@ -296,7 +331,10 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
     if (trackPanNodeRef.current && trackPanNodeRef.current.pan) {
       trackPanNodeRef.current.pan.setValueAtTime(trackPan, audioCtxRef.current.currentTime);
     }
-  }, [voicePan, trackPan]);
+    if (partnerPanNodeRef.current && partnerPanNodeRef.current.pan) {
+      partnerPanNodeRef.current.pan.setValueAtTime(partnerPan, audioCtxRef.current.currentTime);
+    }
+  }, [voicePan, trackPan, partnerPan]);
 
   // Handle Delay compensation slider updates live
   useEffect(() => {
@@ -314,9 +352,9 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
 
   // Keep playback speed locked at exactly 1.0x normal speed to prevent timing/sync drift
   useEffect(() => {
-    if (!voiceAudioRef.current || !trackAudioRef.current) return;
-    voiceAudioRef.current.playbackRate = 1.0;
-    trackAudioRef.current.playbackRate = 1.0;
+    if (voiceAudioRef.current) voiceAudioRef.current.playbackRate = 1.0;
+    if (trackAudioRef.current) trackAudioRef.current.playbackRate = 1.0;
+    if (partnerAudioRef.current) partnerAudioRef.current.playbackRate = 1.0;
   }, [selectedFreq]);
 
   useEffect(() => {
@@ -468,6 +506,9 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
     if (isPlaying) {
       voiceAudioRef.current.pause();
       trackAudioRef.current.pause();
+      if (partnerAudioRef.current) {
+        partnerAudioRef.current.pause();
+      }
       if (carrierOscRef.current) {
         try { carrierOscRef.current.stop(); } catch (e) {}
         carrierOscRef.current = null;
@@ -505,10 +546,19 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
       }
 
       trackAudioRef.current.currentTime = voiceAudioRef.current.currentTime;
-      await Promise.all([
+      if (partnerAudioRef.current) {
+        partnerAudioRef.current.currentTime = voiceAudioRef.current.currentTime;
+      }
+
+      const playPromises = [
         voiceAudioRef.current.play(),
         trackAudioRef.current.play()
-      ]);
+      ];
+      if (partnerAudioRef.current) {
+        playPromises.push(partnerAudioRef.current.play());
+      }
+
+      await Promise.all(playPromises);
       setIsPlaying(true);
     }
   };
@@ -606,6 +656,25 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
                 <input type="range" min="0" max="100" value={trackVol} onChange={e => setTrackVol(Number(e.target.value))} style={{ width: '100%' }} />
               </div>
             </div>
+
+            {currentRecording?.isDuet && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', background: 'rgba(255, 0, 193, 0.03)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255, 0, 193, 0.08)' }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--secondary-glow)', marginBottom: '5px', fontWeight: 'bold' }}>
+                    <span>👥 {currentRecording?.partnerName || 'Partner'} Vol</span>
+                    <span>{partnerVol}%</span>
+                  </div>
+                  <input type="range" min="0" max="100" value={partnerVol} onChange={e => setPartnerVol(Number(e.target.value))} style={{ width: '100%' }} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--secondary-glow)', marginBottom: '5px', fontWeight: 'bold' }}>
+                    <span>👥 {currentRecording?.partnerName || 'Partner'} Pan</span>
+                    <span>{partnerPan === 0 ? 'Center' : (partnerPan < 0 ? `Left ${Math.abs(Math.round(partnerPan * 100))}%` : `Right ${Math.round(partnerPan * 100)}%`)}</span>
+                  </div>
+                  <input type="range" min="-1" max="1" step="0.1" value={partnerPan} onChange={e => setPartnerPan(parseFloat(e.target.value))} style={{ width: '100%' }} />
+                </div>
+              </div>
+            )}
 
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--primary-glow)', marginBottom: '5px' }}>

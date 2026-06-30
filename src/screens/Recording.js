@@ -41,6 +41,19 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
   
   const [cameraFilter, setCameraFilter] = useState('aura');
   const cameraFilterCanvasRef = useRef(null);
+  const partnerAudioRef = useRef(null);
+
+  const getDuetLineText = (lineText, index) => {
+    if (!currentRecording?.isDuet) return lineText;
+    const partnerName = currentRecording?.partnerName || 'Partner';
+    if (index % 4 === 0) {
+      return `[Together] ${lineText}`;
+    } else if (index % 2 === 0) {
+      return `[${partnerName}] ${lineText}`;
+    } else {
+      return `[Me] ${lineText}`;
+    }
+  };
 
   const toggleMute = () => {
     const nextMuted = !isMuted;
@@ -371,20 +384,29 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
     }
   }, [song]);
 
-  // Backing audio loading
+  // Backing and partner audio loading
   useEffect(() => {
     if (song) {
       const audio = new Audio(song.audioUrl);
       audio.crossOrigin = "anonymous";
       backingAudioRef.current = audio;
+
+      if (currentRecording?.isDuet && currentRecording?.partnerVocalUrl) {
+        const partnerAudio = new Audio(currentRecording.partnerVocalUrl);
+        partnerAudio.crossOrigin = "anonymous";
+        partnerAudioRef.current = partnerAudio;
+      }
     }
     return () => {
       if (backingAudioRef.current) {
         backingAudioRef.current.pause();
       }
+      if (partnerAudioRef.current) {
+        partnerAudioRef.current.pause();
+      }
       cleanupAudio();
     };
-  }, [song]);
+  }, [song, currentRecording]);
 
   // Backing track update loop
   useEffect(() => {
@@ -569,6 +591,12 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
         await backingAudioRef.current.play();
       }
 
+      if (partnerAudioRef.current) {
+        partnerAudioRef.current.currentTime = 0;
+        partnerAudioRef.current.volume = 0.6;
+        await partnerAudioRef.current.play();
+      }
+
       // MediaRecorder initialization
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorder.ondataavailable = (e) => {
@@ -589,7 +617,10 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
           score,
           pitchHistory,
           vocalFilter: selectedFilter,
-          autotuneStrength
+          autotuneStrength,
+          isDuet: currentRecording?.isDuet || false,
+          partnerName: currentRecording?.partnerName || '',
+          partnerVocalUrl: currentRecording?.partnerVocalUrl || ''
         });
         
         navigate('Results');
@@ -607,6 +638,10 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
       if (backingAudioRef.current) {
         backingAudioRef.current.currentTime = 0;
         backingAudioRef.current.play().catch(() => {});
+      }
+      if (partnerAudioRef.current) {
+        partnerAudioRef.current.currentTime = 0;
+        partnerAudioRef.current.play().catch(() => {});
       }
     }
   };
@@ -628,6 +663,9 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
     if (backingAudioRef.current) {
       backingAudioRef.current.pause();
     }
+    if (partnerAudioRef.current) {
+      partnerAudioRef.current.pause();
+    }
     if (humOscRef.current) {
       humOscRef.current.stop();
     }
@@ -643,7 +681,10 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
         score,
         pitchHistory: [220, 222, 218, 220, 221],
         vocalFilter: selectedFilter,
-        autotuneStrength
+        autotuneStrength,
+        isDuet: currentRecording?.isDuet || false,
+        partnerName: currentRecording?.partnerName || '',
+        partnerVocalUrl: currentRecording?.partnerVocalUrl || ''
       });
       navigate('Results');
     }
@@ -843,13 +884,13 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
               {lyricsLines.length > 0 ? (
                 <>
                   <p style={{ color: 'var(--text-dim)', fontSize: '0.82rem', opacity: 0.45 }}>
-                    {lyricsLines[currentLineIndex - 1] || ''}
+                    {lyricsLines[currentLineIndex - 1] ? getDuetLineText(lyricsLines[currentLineIndex - 1], currentLineIndex - 1) : ''}
                   </p>
-                  <p style={{ color: 'var(--primary-glow)', fontSize: '1.25rem', fontWeight: 'bold', textShadow: '0 0 10px var(--primary-glow)' }}>
-                    {lyricsLines[currentLineIndex] || '---'}
+                  <p style={{ color: (currentLineIndex % 4 === 0) ? '#ffcc00' : ((currentLineIndex % 2 === 0) ? 'var(--secondary-glow)' : 'var(--primary-glow)'), fontSize: '1.25rem', fontWeight: 'bold', textShadow: '0 0 10px currentColor' }}>
+                    {lyricsLines[currentLineIndex] ? getDuetLineText(lyricsLines[currentLineIndex], currentLineIndex) : '---'}
                   </p>
                   <p style={{ color: 'var(--text-dim)', fontSize: '0.82rem', opacity: 0.45 }}>
-                    {lyricsLines[currentLineIndex + 1] || ''}
+                    {lyricsLines[currentLineIndex + 1] ? getDuetLineText(lyricsLines[currentLineIndex + 1], currentLineIndex + 1) : ''}
                   </p>
                 </>
               ) : (
