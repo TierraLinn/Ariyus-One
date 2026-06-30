@@ -34,6 +34,10 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
 
   const [liveVowel, setLiveVowel] = useState('---');
   const [liveBiorhythm, setLiveBiorhythm] = useState('Delta (Rest)');
+  
+  const [autotuneStrength, setAutotuneStrength] = useState(50);
+  const pitchCanvasRef = useRef(null);
+  const livePitchRef = useRef(0);
 
   const toggleMute = () => {
     const nextMuted = !isMuted;
@@ -55,6 +59,125 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
       monitorGainRef.current.gain.setValueAtTime(nextMonitoring ? 1.0 : 0.0, audioContextRef.current.currentTime);
     }
   };
+
+  useEffect(() => {
+    if (!isRecording) return;
+    const canvas = pitchCanvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    let animationId;
+    let width = canvas.width = canvas.offsetWidth;
+    let height = canvas.height = canvas.offsetHeight;
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (canvas) {
+        width = canvas.width = canvas.offsetWidth;
+        height = canvas.height = canvas.offsetHeight;
+      }
+    });
+    resizeObserver.observe(canvas);
+
+    const singerHistory = [];
+    const maxPoints = 85;
+
+    const drawGrid = () => {
+      animationId = requestAnimationFrame(drawGrid);
+      
+      // Slate background
+      ctx.fillStyle = 'rgba(6, 4, 30, 0.55)';
+      ctx.fillRect(0, 0, width, height);
+
+      // Draw grid octaves lines
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.lineWidth = 1;
+      for (let i = 1; i <= 4; i++) {
+        const y = (height / 5) * i;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.font = '8px monospace';
+        ctx.fillText(`Octave ${5 - i}`, 6, y - 4);
+      }
+
+      const time = Date.now();
+      
+      // Draw target melody line (scrolling blue dashed wave)
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(0, 242, 255, 0.45)';
+      ctx.lineWidth = 2.0;
+      ctx.setLineDash([6, 5]);
+
+      for (let x = 0; x < width; x += 4) {
+        const tOffset = (x - width) * 2.2;
+        const targetY = height / 2 - (Math.sin((time + tOffset) * 0.001) * 32 + Math.cos((time + tOffset) * 0.0006) * 18) * (height / 140);
+        if (x === 0) ctx.moveTo(x, targetY);
+        else ctx.lineTo(x, targetY);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Read current singer pitch
+      const currentPitch = livePitchRef.current || 0;
+      if (currentPitch > 50) {
+        singerHistory.push(currentPitch);
+      } else {
+        singerHistory.push(null);
+      }
+      if (singerHistory.length > maxPoints) singerHistory.shift();
+
+      // Plot singer pitch trajectory (glowing yellow)
+      ctx.beginPath();
+      ctx.strokeStyle = '#ffb700';
+      ctx.lineWidth = 3.0;
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = '#ffb700';
+
+      let drawing = false;
+      singerHistory.forEach((p, idx) => {
+        if (p === null) {
+          drawing = false;
+          return;
+        }
+        const x = (width / maxPoints) * idx;
+        const y = height / 2 - (p - 220) * (height / 140);
+
+        if (!drawing) {
+          ctx.moveTo(x, y);
+          drawing = true;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Snapping evaluation
+      if (currentPitch > 50) {
+        const targetVal = 220 + Math.sin(time * 0.001) * 32 + Math.cos(time * 0.0006) * 18;
+        const diff = Math.abs(currentPitch - targetVal);
+        if (diff < 15) {
+          ctx.fillStyle = '#00ff87';
+          ctx.font = 'bold 10px Orbitron';
+          ctx.fillText('🌟 PERFECT!', width - 90, 18);
+        } else if (diff < 32) {
+          ctx.fillStyle = 'var(--primary-glow)';
+          ctx.font = 'bold 10px Orbitron';
+          ctx.fillText('👍 GOOD', width - 80, 18);
+        }
+      }
+    };
+
+    drawGrid();
+
+    return () => {
+      cancelAnimationFrame(animationId);
+      resizeObserver.disconnect();
+    };
+  }, [isRecording]);
 
   useEffect(() => {
     if (song && song.lyrics) {
@@ -207,6 +330,7 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
         if (pitch > 50 && pitch < 1000) {
           const roundedPitch = Math.round(pitch);
           setLivePitch(roundedPitch);
+          livePitchRef.current = roundedPitch;
           setPitchHistory(prev => {
             const nextHistory = [...prev, pitch];
             // Compute live biorhythms
@@ -230,6 +354,7 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
 
         } else {
           setLivePitch(0);
+          livePitchRef.current = 0;
           setLiveVowel('---');
           setLiveBiorhythm('Delta (Resting Wavelength)');
         }
@@ -277,7 +402,8 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
           playbackUrl: localPlaybackUrl,
           score,
           pitchHistory,
-          vocalFilter: selectedFilter
+          vocalFilter: selectedFilter,
+          autotuneStrength
         });
         
         navigate('Results');
@@ -330,7 +456,8 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
         playbackUrl: "https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Happy%20Life.mp3",
         score,
         pitchHistory: [220, 222, 218, 220, 221],
-        vocalFilter: selectedFilter
+        vocalFilter: selectedFilter,
+        autotuneStrength
       });
       navigate('Results');
     }
@@ -387,6 +514,19 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
           <div style={{ position: 'absolute', width: '100%', height: '100%', zIndex: 2 }}>
             <VoiceReactiveVisualizer analyser={analyserRef.current} />
           </div>
+          {/* Pitch Guide Trajectory Grid */}
+          <div style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', padding: '8px 12px', background: 'rgba(6, 4, 30, 0.75)', borderTop: '1px solid rgba(255,255,255,0.06)', zIndex: 3 }}>
+            <span style={{ fontSize: '0.62rem', color: 'var(--text-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
+              🎯 Pitch Trajectory Guide
+            </span>
+            {isRecording ? (
+              <canvas ref={pitchCanvasRef} style={{ width: '100%', height: '55px', borderRadius: '4px', display: 'block' }} />
+            ) : (
+              <div style={{ width: '100%', height: '55px', borderRadius: '4px', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)', fontSize: '0.68rem' }}>
+                Resonance pitch guide active during recording
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Info & Prompter Panel */}
@@ -431,6 +571,25 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
                   {filter}
                 </button>
               ))}
+            </div>
+
+            {/* Autotune Strength Config */}
+            <div style={{ background: 'rgba(0,242,255,0.03)', padding: '10px 12px', borderRadius: '8px', border: '1px solid rgba(0,242,255,0.08)', marginTop: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--primary-glow)', marginBottom: '4px' }}>
+                <span>✨ Autotune Snap Strength</span>
+                <span>{autotuneStrength}%</span>
+              </div>
+              <input 
+                type="range" 
+                min="0" 
+                max="100" 
+                value={autotuneStrength} 
+                onChange={e => setAutotuneStrength(Number(e.target.value))} 
+                style={{ width: '100%' }} 
+              />
+              <span style={{ fontSize: '0.62rem', color: 'var(--text-dim)', display: 'block', marginTop: '2px', textAlign: 'left' }}>
+                Locks vocal pitches snap-matching closest target notes.
+              </span>
             </div>
           </div>
 

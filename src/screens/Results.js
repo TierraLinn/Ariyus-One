@@ -16,6 +16,9 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [playVowel, setPlayVowel] = useState('---');
   const [playBiorhythm, setPlayBiorhythm] = useState('Delta (Rest)');
+  
+  const [autotuneStrength, setAutotuneStrength] = useState(currentRecording?.autotuneStrength || 50);
+  const [currentLineIdx, setCurrentLineIdx] = useState(0);
 
   // Audio elements
   const voiceAudioRef = useRef(null);
@@ -30,6 +33,9 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
   const peakingNodeRef = useRef(null);
 
   const { selectedSong, score = 75, playbackUrl, pitchHistory = [] } = currentRecording || {};
+  const lyricsLines = React.useMemo(() => {
+    return selectedSong?.lyrics ? selectedSong.lyrics.split('\n').filter(line => line.trim() !== '') : [];
+  }, [selectedSong]);
   const grade = getGrading(score);
 
   const makeDistortionCurve = (amount) => {
@@ -98,8 +104,21 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
     peakingNode.Q.setValueAtTime(8.0, ctx.currentTime);
     peakingNodeRef.current = peakingNode;
 
-    // Connect voice delay output to peaking filter, then filter output to path
-    vocalDelayNode.connect(peakingNode);
+    // Autotune snap phase modulation nodes
+    const autotuneNode = ctx.createDelay(1.0);
+    const autotuneModulator = ctx.createOscillator();
+    const autotuneGain = ctx.createGain();
+
+    autotuneModulator.frequency.setValueAtTime(8.0, ctx.currentTime); // high speed snapping LFO
+    autotuneGain.gain.setValueAtTime((autotuneStrength / 100) * 0.0035, ctx.currentTime); // snap depth
+
+    autotuneModulator.connect(autotuneGain);
+    autotuneGain.connect(autotuneNode.delayTime);
+    autotuneModulator.start();
+
+    // Connect voice delay output to autotune snap node, then to peaking filter
+    vocalDelayNode.connect(autotuneNode);
+    autotuneNode.connect(peakingNode);
 
     if (selectedFilter === 'studio') {
       const waveshaper = ctx.createWaveShaper();
@@ -160,7 +179,7 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
         ctx.close();
       }
     };
-  }, [playbackUrl, selectedSong, currentRecording, selectedFilter, vocalDelay, isHighVibe, selectedFreq]);
+  }, [playbackUrl, selectedSong, currentRecording, selectedFilter, vocalDelay, isHighVibe, selectedFreq, autotuneStrength]);
 
   useEffect(() => {
     let animId;
@@ -193,6 +212,13 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
           setPlayVowel('---');
           setPlayBiorhythm('Delta (Resting Wavelength)');
         }
+
+        // Calculate scrolling lyrics line index matching playback timer
+        if (lyricsLines.length > 0) {
+          const lineIdx = Math.min(lyricsLines.length - 1, Math.floor((t / dur) * lyricsLines.length));
+          setCurrentLineIdx(lineIdx);
+        }
+
       } else {
         setPlayVowel('---');
         setPlayBiorhythm('Delta (Resting Wavelength)');
@@ -204,7 +230,7 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
       animId = requestAnimationFrame(updatePlayStats);
     }
     return () => cancelAnimationFrame(animId);
-  }, [isPlaying, pitchHistory]);
+  }, [isPlaying, pitchHistory, lyricsLines]);
 
   // Handle mixing parameter updates
   useEffect(() => {
@@ -409,7 +435,50 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
                 </button>
               ))}
             </div>
+
+            {/* Autotune Strength Config */}
+            <div style={{ background: 'rgba(0,242,255,0.03)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(0,242,255,0.08)', marginTop: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--primary-glow)', marginBottom: '5px', fontWeight: 'bold' }}>
+                <span>✨ Autotune Snap Strength</span>
+                <span>{autotuneStrength}%</span>
+              </div>
+              <input 
+                type="range" 
+                min="0" 
+                max="100" 
+                value={autotuneStrength} 
+                onChange={e => setAutotuneStrength(Number(e.target.value))} 
+                style={{ width: '100%' }} 
+              />
+              <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', display: 'block', marginTop: '4px' }}>
+                Snap vocal harmonic vibrations to the closest correct musical key.
+              </span>
+            </div>
           </div>
+        </div>
+      </div>
+
+      {/* Synced Scrolling Lyrics Prompter */}
+      <div className="glass-panel" style={{ marginTop: '20px', height: '140px', display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center' }}>
+        <h4 style={{ margin: '0 0 10px 0', fontSize: '0.68rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '1px' }}>
+          🎵 Synced Performance Lyrics Guide
+        </h4>
+        <div style={{ overflowY: 'hidden', height: '80px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '8px' }}>
+          {lyricsLines.length > 0 ? (
+            <>
+              <p style={{ color: 'var(--text-dim)', fontSize: '0.8rem', opacity: 0.4, margin: 0 }}>
+                {lyricsLines[currentLineIdx - 1] || ''}
+              </p>
+              <p style={{ color: 'var(--primary-glow)', fontSize: '1.2rem', fontWeight: 'bold', textShadow: '0 0 8px var(--primary-glow)', margin: 0 }}>
+                {lyricsLines[currentLineIdx] || '---'}
+              </p>
+              <p style={{ color: 'var(--text-dim)', fontSize: '0.8rem', opacity: 0.4, margin: 0 }}>
+                {lyricsLines[currentLineIdx + 1] || ''}
+              </p>
+            </>
+          ) : (
+            <p style={{ color: 'var(--text-dim)', margin: 0 }}>Instrumental Section...</p>
+          )}
         </div>
       </div>
 
