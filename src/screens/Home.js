@@ -1,215 +1,92 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import VoiceSignatureCard from '../components/VoiceSignatureCard';
 
-const COSMIC_ADS = [
-  {
-    title: "✨ QUANTUM BIO-TUNING HEADSET",
-    desc: "Harmonize brainwaves at 528Hz instantly. Order today for 15% off.",
-    icon: "🎧"
-  },
-  {
-    title: "🔮 SOLFEGGIO NATURAL CRYSTALS",
-    desc: "Charged crystals curated for chakra resonance. Connect to your source.",
-    icon: "💎"
-  },
-  {
-    title: "🌌 STARSEED MEDITATION APP",
-    desc: "Guided astral projection travels & sleep tuning. Install from portal.",
-    icon: "🚀"
-  }
-];
-
-const HomeNexus = ({ userData, communityFeed, navigate, activeChallenge, handleAcceptChallenge }) => {
-  const [activeAdIdx, setActiveAdIdx] = useState(0);
-
-  useEffect(() => {
-    if (!userData || userData.tier !== 'Free') return;
-    const timer = setInterval(() => {
-      setActiveAdIdx(prev => (prev + 1) % COSMIC_ADS.length);
-    }, 6000);
-    return () => clearInterval(timer);
-  }, [userData]);
-
+const HomeNexus = ({ userData, navigate }) => {
   if (!userData) return null;
 
   const {
     displayName = 'Aura Singer',
-    tier = 'Free',
     xp = 120,
-    voiceSignature = null,
-    completedChallenges = []
+    tier = 'Free',
+    voiceSignature
   } = userData;
 
-  // Ariyus Journey Levels
-  const getJourneyRank = (currentXp) => {
-    if (currentXp < 100) return { rank: 'Seeker', nextRank: 'Resonator', minXp: 0, maxXp: 100 };
-    if (currentXp < 300) return { rank: 'Resonator', nextRank: 'Harmonizer', minXp: 100, maxXp: 300 };
-    if (currentXp < 600) return { rank: 'Harmonizer', nextRank: 'Alchemist', minXp: 300, maxXp: 600 };
-    if (currentXp < 1000) return { rank: 'Alchemist', nextRank: 'Luminary', minXp: 600, maxXp: 1000 };
-    return { rank: 'Luminary', nextRank: 'Max LevelReached', minXp: 1000, maxXp: 1000 };
+  // Level progression
+  const getLevelInfo = (currentXp) => {
+    if (currentXp < 100) return { title: 'Seeker', level: 1, min: 0, max: 100 };
+    if (currentXp < 250) return { title: 'Resonator', level: 2, min: 100, max: 250 };
+    if (currentXp < 500) return { title: 'Harmonizer', level: 3, min: 250, max: 500 };
+    if (currentXp < 1000) return { title: 'Alchemist', level: 4, min: 500, max: 1000 };
+    return { title: 'Luminary', level: 5, min: 1000, max: 2000 };
   };
 
-  const currentLevelInfo = getJourneyRank(xp);
-  const totalRankRange = currentLevelInfo.maxXp - currentLevelInfo.minXp;
-  const rankProgress = totalRankRange > 0 ? ((xp - currentLevelInfo.minXp) / totalRankRange) * 100 : 100;
-
-  const activeChallenges = [
-    { id: 'ch1', title: 'Cosmic Breath', desc: 'Sustain any vowel at 432 Hz for 6 seconds', reward: '100 XP', xpVal: 100 },
-    { id: 'ch2', title: 'Harmonic Alignment', desc: 'Score A+ on any Solfeggio guided track', reward: '150 XP', xpVal: 150 }
-  ];
+  const levelInfo = getLevelInfo(xp);
+  const progressPercent = Math.min(100, ((xp - levelInfo.min) / (levelInfo.max - levelInfo.min)) * 100);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      
-      {/* Welcome Hero Panel */}
-      <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(6, 4, 30, 0.7), rgba(112, 0, 255, 0.08))', borderColor: 'var(--glass-border)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '15px' }}>
-          <div>
-            <h2 style={{ fontSize: '2rem', margin: 0, textShadow: '0 0 10px rgba(255, 255, 255, 0.3)' }}>
-              Greetings, {displayName}
-            </h2>
-            <p style={{ marginTop: '8px', color: 'var(--text-dim)' }}>
-              Vocal frequencies are stable. Resonance matrix ready.
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <span className="level-badge" style={{ background: 'var(--secondary-glow)', boxShadow: '0 0 10px var(--secondary-glow)' }}>
-              {tier} MEMBER
-            </span>
-          </div>
-        </div>
+    <div className="screen-wrapper">
+      <h1 className="suspended-title">Ariyus Home</h1>
 
-        {/* Ad Placeholder for Free Tier with rotation carousel */}
-        {tier === 'Free' && (
-          <div 
-            className="glass-panel ad-placeholder" 
-            style={{ 
-              margin: '20px 0 0 0', 
-              cursor: 'pointer',
-              borderColor: 'var(--secondary-glow)',
-              background: 'rgba(255, 0, 193, 0.05)',
-              boxShadow: '0 0 10px rgba(255, 0, 193, 0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '15px',
-              padding: '12px 20px',
-              transition: 'all 0.5s ease',
-              textAlign: 'left'
-            }} 
-            onClick={() => navigate('Upgrade')}
-          >
-            <span style={{ fontSize: '1.6rem' }}>{COSMIC_ADS[activeAdIdx].icon}</span>
-            <div style={{ textAlign: 'left' }}>
-              <strong style={{ color: 'var(--secondary-glow)', fontSize: '0.85rem', display: 'block', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                {COSMIC_ADS[activeAdIdx].title}
-              </strong>
-              <span style={{ color: 'var(--text-dim)', fontSize: '0.78rem', marginTop: '3px', display: 'block', lineHeight: '1.3' }}>
-                {COSMIC_ADS[activeAdIdx].desc}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', alignItems: 'start' }}>
+        {/* User Card & Level Progression */}
+        <div className="glass-panel" style={{ margin: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.4rem', color: '#fff' }}>{displayName}</h2>
+              <span style={{ fontSize: '0.75rem', background: 'rgba(255, 0, 193, 0.15)', border: '1px solid var(--secondary-glow)', color: 'var(--secondary-glow)', padding: '2px 8px', borderRadius: '4px', display: 'inline-block', marginTop: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}>
+                {tier} Member
               </span>
             </div>
-            <div style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--secondary-glow)', border: '1px solid var(--secondary-glow)', borderRadius: '4px', padding: '2px 6px', fontWeight: 'bold' }}>
-              AD
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Journey Level</span>
+              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--primary-glow)' }}>Lvl {levelInfo.level} - {levelInfo.title}</div>
             </div>
           </div>
-        )}
-      </div>
 
-      {/* Ariyus Journey Level tracking */}
-      <div className="glass-panel" style={{ borderColor: 'var(--primary-glow)', boxShadow: '0 0 15px rgba(0, 242, 255, 0.1)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <div>
-            <h3 style={{ margin: 0, color: 'var(--primary-glow)', textShadow: '0 0 8px var(--primary-glow)' }}>Ariyus Journey</h3>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>Level Progression Node</span>
+          <div style={{ marginBottom: '15px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '5px' }}>
+              <span>XP Progression</span>
+              <span>{xp} / {levelInfo.max} XP</span>
+            </div>
+            <div className="progress-track" style={{ height: '10px' }}>
+              <div className="progress-fill" style={{ width: `${progressPercent}%`, background: 'var(--primary-glow)' }} />
+            </div>
           </div>
-          <div style={{ textAlign: 'right' }}>
-            <span style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#fff' }}>{currentLevelInfo.rank}</span>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>{xp} / {currentLevelInfo.maxXp} XP</div>
-          </div>
+
+          <button 
+            className="glowing-button" 
+            style={{ width: '100%', padding: '12px' }}
+            onClick={() => navigate('SongLibrary')}
+          >
+            🎙️ Enter Recording Catalog
+          </button>
         </div>
 
-        <div className="progress-track" style={{ height: '14px', marginBottom: '8px' }}>
-          <div className="progress-fill" style={{ width: `${rankProgress}%` }} />
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-          <span>Rank Min: {currentLevelInfo.minXp} XP</span>
-          <span>Next Rank: {currentLevelInfo.nextRank}</span>
-        </div>
-      </div>
-
-      {/* Voice Signature Card */}
-      <VoiceSignatureCard signature={voiceSignature} />
-
-      {/* Vocal Challenges Grid */}
-      <div className="glass-panel">
-        <h3 style={{ textShadow: '0 0 10px rgba(255,255,255,0.2)', marginBottom: '15px' }}>Alignment Challenges</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '15px' }}>
-          {activeChallenges.map((ch) => {
-            const isCompleted = completedChallenges.includes(ch.id);
-            const isActive = activeChallenge === ch.id;
-
-            return (
-              <div 
-                key={ch.id} 
-                className="glass-panel" 
-                style={{ 
-                  margin: 0, 
-                  background: isCompleted ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0,0,0,0.15)', 
-                  borderColor: isActive ? 'var(--primary-glow)' : isCompleted ? 'rgba(0, 255, 135, 0.2)' : 'rgba(255,255,255,0.05)',
-                  boxShadow: isActive ? '0 0 12px var(--primary-glow)44' : '',
-                  opacity: isCompleted ? 0.75 : 1
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <b style={{ color: isCompleted ? '#00ff87' : '#fff' }}>
-                    {isCompleted ? '✓ ' : ''}{ch.title}
-                  </b>
-                  <span style={{ color: isCompleted ? '#00ff87' : 'var(--primary-glow)', fontSize: '0.85rem' }}>
-                    {isCompleted ? 'COMPLETED' : `+${ch.reward}`}
-                  </span>
-                </div>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-dim)', marginBottom: '12px' }}>{ch.desc}</p>
-                
-                {isCompleted ? (
-                  <button 
-                    className="glowing-button" 
-                    style={{ padding: '6px 16px', fontSize: '0.8rem', margin: 0, background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.1)', color: 'var(--text-dim)', cursor: 'not-allowed', textShadow: 'none' }}
-                    disabled
-                  >
-                    Alignment Calibrated
-                  </button>
-                ) : isActive ? (
-                  <button 
-                    className="glowing-button" 
-                    style={{ padding: '6px 16px', fontSize: '0.8rem', margin: 0, borderColor: 'var(--primary-glow)', color: 'var(--primary-glow)', boxShadow: '0 0 10px var(--primary-glow)' }}
-                    onClick={() => navigate('SongLibrary')}
-                  >
-                    ⚡ Enter Studio & Align
-                  </button>
-                ) : (
-                  <button 
-                    className="glowing-button secondary" 
-                    style={{ padding: '6px 16px', fontSize: '0.8rem', margin: 0 }}
-                    onClick={() => handleAcceptChallenge(ch.id)}
-                  >
-                    Accept Challenge
-                  </button>
-                )}
-              </div>
-            );
-          })}
+        {/* Weekly Contest Promo */}
+        <div className="glass-panel" style={{ margin: 0, borderColor: 'var(--secondary-glow)', background: 'rgba(255, 0, 193, 0.03)' }}>
+          <span style={{ fontSize: '0.75rem', background: 'var(--secondary-glow)', color: '#000', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>
+            🏆 Active Contest
+          </span>
+          <h3 style={{ marginTop: '12px', marginBottom: '8px', color: '#fff', fontSize: '1.25rem' }}>Solfeggio Ascension: 528Hz Hearts</h3>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', lineHeight: '1.4', marginBottom: '15px' }}>
+            Sing any catalog track and align your vocal overtones with the cell-miracle 528Hz frequency. Top performers get crowned with the **Solfeggio Adept** badge.
+          </p>
+          <button 
+            className="glowing-button secondary" 
+            style={{ margin: 0, padding: '8px 16px', fontSize: '0.8rem' }}
+            onClick={() => navigate('Competitions')}
+          >
+            Go to Competitions
+          </button>
         </div>
       </div>
 
-      {/* Quick Access Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
-        <button className="glowing-button" onClick={() => navigate('SongLibrary')} style={{ margin: 0, padding: '16px' }}>
-          Open Recording Studio
-        </button>
-        <button className="glowing-button secondary" onClick={() => navigate('CollaborationLobby')} style={{ margin: 0, padding: '16px' }}>
-          Open Resonance Lab
-        </button>
-      </div>
-
+      {/* Voice Signature Showcase Card */}
+      {voiceSignature && (
+        <div style={{ marginTop: '20px' }}>
+          <VoiceSignatureCard signature={voiceSignature} />
+        </div>
+      )}
     </div>
   );
 };
