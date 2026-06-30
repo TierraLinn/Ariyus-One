@@ -17,6 +17,7 @@ const SongLibrary = ({ navigate, setCurrentRecording }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedGenre, setSelectedGenre] = useState('All');
   const [selectedDifficulty, setSelectedDifficulty] = useState('All');
+  const [selectedSongHub, setSelectedSongHub] = useState(null);
 
   const filteredSongs = songs.filter(song => {
     const matchesSearch = song.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -134,7 +135,7 @@ const SongLibrary = ({ navigate, setCurrentRecording }) => {
                 </div>
               </div>
 
-              <button className="glowing-button" style={{ margin: 0, padding: '10px 22px' }} onClick={() => handleSelectSong(song)}>
+              <button className="glowing-button" style={{ margin: 0, padding: '10px 22px' }} onClick={() => setSelectedSongHub(song)}>
                 🎙️ Sing Track
               </button>
             </div>
@@ -145,6 +146,92 @@ const SongLibrary = ({ navigate, setCurrentRecording }) => {
           </div>
         )}
       </div>
+
+      {selectedSongHub && (
+        <div className="custom-alert-overlay" onClick={() => setSelectedSongHub(null)}>
+          <div className="custom-alert-box glass-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <h2 style={{ color: '#fff', fontSize: '1.4rem', marginBottom: '4px' }}>{selectedSongHub.title} Hub</h2>
+            <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginTop: 0 }}>by {selectedSongHub.artist}</p>
+
+            <h4 style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px', color: 'var(--primary-glow)', textTransform: 'uppercase', fontSize: '0.78rem', letterSpacing: '1px', marginTop: '15px' }}>
+              🏆 Billboard Performance Chart
+            </h4>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', margin: '15px 0' }}>
+              {(() => {
+                const saved = localStorage.getItem('ariyus_shared_recordings');
+                const shared = saved ? JSON.parse(saved) : [];
+                const matches = shared.filter(item => item.song?.id === selectedSongHub.id)
+                                      .sort((a, b) => b.score - a.score);
+
+                if (matches.length > 0) {
+                  return matches.map((item, mIdx) => (
+                    <div key={mIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)', padding: '8px 12px', borderRadius: '6px', fontSize: '0.85rem' }}>
+                      <span>#{mIdx + 1} <strong>{item.userDisplayName}</strong></span>
+                      <span style={{ color: item.grade?.color || 'var(--primary-glow)' }}>{item.grade?.letter} ({item.score}%)</span>
+                    </div>
+                  ));
+                }
+
+                // Simulated fallback Billboard chart
+                return [
+                  { name: 'Solar Tenor', score: 96, grade: 'A++' },
+                  { name: 'Celeste Vocalist', score: 92, grade: 'A+' },
+                  { name: 'Aura Singer', score: 87, grade: 'A' }
+                ].map((item, mIdx) => (
+                  <div key={mIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)', padding: '8px 12px', borderRadius: '6px', fontSize: '0.85rem' }}>
+                    <span>#{mIdx + 1} <strong>{item.name}</strong></span>
+                    <span style={{ color: 'var(--primary-glow)' }}>{item.grade} ({item.score}%)</span>
+                  </div>
+                ));
+              })()}
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+              <button 
+                className="glowing-button" 
+                style={{ flexGrow: 1, margin: 0 }}
+                onClick={() => {
+                  handleSelectSong(selectedSongHub);
+                  setSelectedSongHub(null);
+                }}
+              >
+                🎙️ Sing Solo
+              </button>
+              <button 
+                className="glowing-button secondary" 
+                style={{ flexGrow: 1, margin: 0 }}
+                onClick={() => {
+                  // Start Duet mode
+                  setCurrentRecording({
+                    selectedSong: selectedSongHub,
+                    playbackUrl: null,
+                    grade: null,
+                    score: 0,
+                    recordingData: null,
+                    duetPartner: {
+                      userDisplayName: 'Celeste Vocalist',
+                      grade: { letter: 'A+', color: '#00f2ff' }
+                    }
+                  });
+                  navigate('Recording');
+                  setSelectedSongHub(null);
+                }}
+              >
+                👥 Record Duet
+              </button>
+            </div>
+
+            <button 
+              className="glowing-button secondary" 
+              style={{ width: '100%', marginTop: '10px', borderColor: 'var(--secondary-glow)', color: 'var(--secondary-glow)', margin: '10px 0 0 0' }}
+              onClick={() => setSelectedSongHub(null)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

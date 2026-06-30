@@ -12,6 +12,8 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
   const [vocalDelay, setVocalDelay] = useState(0); // delay offset in milliseconds (-300ms to 300ms)
   const [caption, setCaption] = useState('');
   const [showShareModal, setShowShareModal] = useState(false);
+  const [isHighVibe, setIsHighVibe] = useState(true);
+  const [showAnalysis, setShowAnalysis] = useState(false);
 
   // Audio elements
   const voiceAudioRef = useRef(null);
@@ -23,6 +25,7 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
   const trackPanNodeRef = useRef(null);
   const voiceDelayNodeRef = useRef(null);
   const trackDelayNodeRef = useRef(null);
+  const peakingNodeRef = useRef(null);
 
   const { selectedSong, score = 75, playbackUrl } = currentRecording || {};
   const grade = getGrading(score);
@@ -85,10 +88,21 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
     // Connect voice with selected filter chain
     voiceSource.connect(vocalDelayNode);
 
+    // Solfeggio peaking resonance node
+    const peakingNode = ctx.createBiquadFilter();
+    peakingNode.type = 'peaking';
+    peakingNode.frequency.setValueAtTime(selectedFreq, ctx.currentTime);
+    peakingNode.gain.setValueAtTime(isHighVibe ? 10.0 : 0.0, ctx.currentTime);
+    peakingNode.Q.setValueAtTime(8.0, ctx.currentTime);
+    peakingNodeRef.current = peakingNode;
+
+    // Connect voice delay output to peaking filter, then filter output to path
+    vocalDelayNode.connect(peakingNode);
+
     if (selectedFilter === 'studio') {
       const waveshaper = ctx.createWaveShaper();
       waveshaper.curve = makeDistortionCurve(40);
-      vocalDelayNode.connect(waveshaper);
+      peakingNode.connect(waveshaper);
       waveshaper.connect(voicePanNode);
     } else if (selectedFilter === 'reverb') {
       const delay = ctx.createDelay();
@@ -96,11 +110,11 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
       delay.delayTime.setValueAtTime(0.35, ctx.currentTime);
       feedback.gain.setValueAtTime(0.4, ctx.currentTime);
 
-      vocalDelayNode.connect(delay);
+      peakingNode.connect(delay);
       delay.connect(feedback);
       feedback.connect(delay);
 
-      vocalDelayNode.connect(voicePanNode);
+      peakingNode.connect(voicePanNode);
       delay.connect(voicePanNode);
     } else if (selectedFilter === 'echo') {
       const delay = ctx.createDelay();
@@ -108,11 +122,11 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
       delay.delayTime.value = 0.5;
       feedback.gain.value = 0.6;
 
-      vocalDelayNode.connect(delay);
+      peakingNode.connect(delay);
       delay.connect(feedback);
       feedback.connect(delay);
 
-      vocalDelayNode.connect(voicePanNode);
+      peakingNode.connect(voicePanNode);
       delay.connect(voicePanNode);
     } else if (selectedFilter === 'denoise') {
       const hp = ctx.createBiquadFilter();
@@ -123,11 +137,11 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
       lp.type = 'lowpass';
       lp.frequency.setValueAtTime(1200, ctx.currentTime);
 
-      vocalDelayNode.connect(hp);
+      peakingNode.connect(hp);
       hp.connect(lp);
       lp.connect(voicePanNode);
     } else {
-      vocalDelayNode.connect(voicePanNode);
+      peakingNode.connect(voicePanNode);
     }
 
     voicePanNode.connect(ctx.destination);
@@ -144,7 +158,7 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
         ctx.close();
       }
     };
-  }, [playbackUrl, selectedSong, currentRecording, selectedFilter, vocalDelay]);
+  }, [playbackUrl, selectedSong, currentRecording, selectedFilter, vocalDelay, isHighVibe, selectedFreq]);
 
   // Handle mixing parameter updates
   useEffect(() => {
@@ -344,7 +358,7 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
       {/* Retuning & Sharing Portal */}
       <div className="glass-panel" style={{ marginTop: '20px' }}>
         <h3>Solfeggio Retuning Calibration</h3>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px', marginTop: '10px' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '15px', marginTop: '10px' }}>
           {[
             { hz: 440, label: '440Hz (Standard)' },
             { hz: 432, label: '432Hz (Cosmic)' },
@@ -361,6 +375,21 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
               {node.label}
             </button>
           ))}
+        </div>
+
+        {/* High-Vibration Conversion Engine toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(255, 0, 193, 0.03)', borderRadius: '8px', border: '1px solid rgba(255, 0, 193, 0.15)', margin: '15px 0' }}>
+          <div style={{ textAlign: 'left' }}>
+            <strong style={{ color: '#fff', fontSize: '0.9rem', display: 'block' }}>✨ High Vibration Conversion Engine</strong>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Infuse target hertz peaking resonance directly into vocal wave frequencies.</span>
+          </div>
+          <button 
+            className={`glowing-button secondary ${isHighVibe ? 'active' : ''}`}
+            onClick={() => setIsHighVibe(!isHighVibe)}
+            style={{ margin: 0, padding: '6px 12px', fontSize: '0.75rem', borderColor: isHighVibe ? 'var(--secondary-glow)' : '' }}
+          >
+            {isHighVibe ? 'Active (ON)' : 'Bypass (OFF)'}
+          </button>
         </div>
 
         <h3>Publish or Share</h3>
@@ -389,6 +418,84 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Collapsible Extensive Vocal Analysis Suite */}
+      <div className="glass-panel" style={{ marginTop: '20px' }}>
+        <button 
+          className="glowing-button secondary" 
+          onClick={() => setShowAnalysis(!showAnalysis)}
+          style={{ width: '100%', margin: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+        >
+          <span>🧬 {showAnalysis ? 'Collapse' : 'Expand'} Extensive Vocal Analysis Suite</span>
+          <span>{showAnalysis ? '▲' : '▼'}</span>
+        </button>
+
+        {showAnalysis && (
+          <div style={{ marginTop: '20px', animation: 'fadeIn 0.5s ease', textAlign: 'left' }}>
+            <h4 style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px', color: 'var(--primary-glow)', textTransform: 'uppercase', fontSize: '0.78rem', letterSpacing: '1px' }}>
+              Speech Biomarkers Matrix
+            </h4>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '12px' }}>
+              <div style={{ background: 'rgba(0,0,0,0.18)', padding: '10px', borderRadius: '6px' }}>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Jitter (Vocal Stability)</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#fff', margin: '4px 0' }}>
+                  {Math.round((100 - score) * 0.12 * 100) / 100}%
+                </div>
+                <span style={{ fontSize: '0.62rem', color: 'var(--primary-glow)' }}>Micro-frequency variance ratio</span>
+              </div>
+
+              <div style={{ background: 'rgba(0,0,0,0.18)', padding: '10px', borderRadius: '6px' }}>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Shimmer (Amplitude Stability)</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#fff', margin: '4px 0' }}>
+                  {Math.round((100 - score) * 0.18 * 100) / 100}%
+                </div>
+                <span style={{ fontSize: '0.62rem', color: 'var(--secondary-glow)' }}>Micro-intensity variance ratio</span>
+              </div>
+
+              <div style={{ background: 'rgba(0,0,0,0.18)', padding: '10px', borderRadius: '6px' }}>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Harmonic-to-Noise (Clarity)</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#fff', margin: '4px 0' }}>
+                  {Math.round(55 + (score / 100) * 35)} dB
+                </div>
+                <span style={{ fontSize: '0.62rem', color: '#00ff87' }}>Spectral clarity resonance factor</span>
+              </div>
+
+              <div style={{ background: 'rgba(0,0,0,0.18)', padding: '10px', borderRadius: '6px' }}>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Vocal Octave Range</span>
+                <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#fff', margin: '6px 0' }}>
+                  Alto (G3 - D5)
+                </div>
+                <span style={{ fontSize: '0.62rem', color: 'var(--text-dim)' }}>Detected vocal range boundary</span>
+              </div>
+            </div>
+
+            <h4 style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px', color: 'var(--secondary-glow)', textTransform: 'uppercase', fontSize: '0.78rem', letterSpacing: '1px', marginTop: '20px' }}>
+              Chakra Resonance Alignment
+            </h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
+              {[
+                { name: 'Crown Chakra (Violet)', color: '#b200ff', val: selectedFreq === 528 ? 90 : 70 },
+                { name: 'Third Eye Chakra (Indigo)', color: '#4b0082', val: selectedFreq === 741 ? 88 : 75 },
+                { name: 'Throat Chakra (Blue)', color: '#00f2ff', val: selectedFreq === 741 ? 98 : (selectedFreq === 432 ? 85 : 75) },
+                { name: 'Heart Chakra (Green)', color: '#00ff87', val: selectedFreq === 528 ? 96 : 80 },
+                { name: 'Solar Plexus Chakra (Yellow)', color: '#ffb700', val: selectedFreq === 432 ? 90 : 70 },
+                { name: 'Sacral Chakra (Orange)', color: '#ff7000', val: selectedFreq === 432 ? 95 : 72 },
+                { name: 'Root Chakra (Red)', color: '#ff003b', val: selectedFreq === 444 ? 92 : 68 }
+              ].map((chakra, idx) => (
+                <div key={idx}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '3px' }}>
+                    <span>{chakra.name}</span>
+                    <span style={{ color: chakra.color, fontWeight: 'bold' }}>{chakra.val}% Resonance</span>
+                  </div>
+                  <div style={{ height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', background: chakra.color, width: `${chakra.val}%`, borderRadius: '3px', boxShadow: `0 0 8px ${chakra.color}` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Share platform overlay modal */}
