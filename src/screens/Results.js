@@ -75,6 +75,12 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
   const partnerDelayNodeRef = useRef(null);
   const peakingNodeRef = useRef(null);
   const carrierOscRef = useRef(null);
+  const leftOscRef = useRef(null);
+  const rightOscRef = useRef(null);
+  const leftPanNodeRef = useRef(null);
+  const rightPanNodeRef = useRef(null);
+  const [isSoundBath, setIsSoundBath] = useState(false);
+  const [soundBathType, setSoundBathType] = useState('alpha');
   const [showDNACard, setShowDNACard] = useState(false);
   const dnaCanvasRef = useRef(null);
   const [partnerVol, setPartnerVol] = useState(80);
@@ -260,6 +266,14 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
         try { carrierOscRef.current.stop(); } catch (e) {}
         carrierOscRef.current = null;
       }
+      if (leftOscRef.current) {
+        try { leftOscRef.current.stop(); } catch (e) {}
+        leftOscRef.current = null;
+      }
+      if (rightOscRef.current) {
+        try { rightOscRef.current.stop(); } catch (e) {}
+        rightOscRef.current = null;
+      }
       if (ctx.state !== 'closed') {
         ctx.close();
       }
@@ -304,6 +318,19 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
           setCurrentLineIdx(lineIdx);
         }
 
+        // Immersive 3D Sound Bath swirling modulation fader
+        if (isSoundBath && leftPanNodeRef.current && rightPanNodeRef.current && audioCtxRef.current) {
+          const swirlTime = Date.now() * 0.0006;
+          const panVal = Math.sin(swirlTime);
+          const ctxTime = audioCtxRef.current.currentTime;
+          if (leftPanNodeRef.current.pan) {
+            leftPanNodeRef.current.pan.setValueAtTime(panVal, ctxTime);
+          }
+          if (rightPanNodeRef.current.pan) {
+            rightPanNodeRef.current.pan.setValueAtTime(-panVal, ctxTime);
+          }
+        }
+
       } else {
         setPlayVowel('---');
         setPlayBiorhythm('Delta (Resting Wavelength)');
@@ -315,7 +342,7 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
       animId = requestAnimationFrame(updatePlayStats);
     }
     return () => cancelAnimationFrame(animId);
-  }, [isPlaying, pitchHistory, lyricsLines]);
+  }, [isPlaying, pitchHistory, lyricsLines, isSoundBath]);
 
   // Handle mixing parameter updates
   useEffect(() => {
@@ -513,18 +540,27 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
         try { carrierOscRef.current.stop(); } catch (e) {}
         carrierOscRef.current = null;
       }
+      if (leftOscRef.current) {
+        try { leftOscRef.current.stop(); } catch (e) {}
+        leftOscRef.current = null;
+      }
+      if (rightOscRef.current) {
+        try { rightOscRef.current.stop(); } catch (e) {}
+        rightOscRef.current = null;
+      }
       setIsPlaying(false);
     } else {
       if (audioCtxRef.current.state === 'suspended') {
         await audioCtxRef.current.resume();
       }
       
+      const ctx = audioCtxRef.current;
+
       // Start carrier resonance bed
-      if (audioCtxRef.current) {
+      if (ctx) {
         if (carrierOscRef.current) {
           try { carrierOscRef.current.stop(); } catch (e) {}
         }
-        const ctx = audioCtxRef.current;
         const osc = ctx.createOscillator();
         const filter = ctx.createBiquadFilter();
         const gain = ctx.createGain();
@@ -543,6 +579,59 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
 
         osc.start();
         carrierOscRef.current = osc;
+      }
+
+      // Start Cosmic Solfeggio 3D Sound Bath Binaural Beats
+      if (ctx && isSoundBath) {
+        // stop any old ones
+        if (leftOscRef.current) { try { leftOscRef.current.stop(); } catch (e) {} }
+        if (rightOscRef.current) { try { rightOscRef.current.stop(); } catch (e) {} }
+
+        const delta = soundBathType === 'alpha' ? 8 : (soundBathType === 'theta' ? 4 : 2);
+        const lHz = selectedFreq;
+        const rHz = selectedFreq + delta;
+
+        // Left Ear path
+        const leftOsc = ctx.createOscillator();
+        const leftFilter = ctx.createBiquadFilter();
+        const leftGain = ctx.createGain();
+        const leftPanNode = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
+
+        leftOsc.type = 'sine';
+        leftOsc.frequency.setValueAtTime(lHz, ctx.currentTime);
+        leftFilter.type = 'lowpass';
+        leftFilter.frequency.setValueAtTime(120, ctx.currentTime);
+        leftGain.gain.setValueAtTime(0.03, ctx.currentTime); // subtle volume
+
+        leftOsc.connect(leftFilter);
+        leftFilter.connect(leftGain);
+        leftGain.connect(leftPanNode);
+        leftPanNode.connect(ctx.destination);
+
+        leftOsc.start();
+        leftOscRef.current = leftOsc;
+        leftPanNodeRef.current = leftPanNode;
+
+        // Right Ear path
+        const rightOsc = ctx.createOscillator();
+        const rightFilter = ctx.createBiquadFilter();
+        const rightGain = ctx.createGain();
+        const rightPanNode = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
+
+        rightOsc.type = 'sine';
+        rightOsc.frequency.setValueAtTime(rHz, ctx.currentTime);
+        rightFilter.type = 'lowpass';
+        rightFilter.frequency.setValueAtTime(120, ctx.currentTime);
+        rightGain.gain.setValueAtTime(0.03, ctx.currentTime);
+
+        rightOsc.connect(rightFilter);
+        rightFilter.connect(rightGain);
+        rightGain.connect(rightPanNode);
+        rightPanNode.connect(ctx.destination);
+
+        rightOsc.start();
+        rightOscRef.current = rightOsc;
+        rightPanNodeRef.current = rightPanNode;
       }
 
       trackAudioRef.current.currentTime = voiceAudioRef.current.currentTime;
@@ -831,6 +920,61 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Immersive 3D Sound Bath Card */}
+      <div className="glass-panel" style={{ marginTop: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+          <div style={{ textAlign: 'left' }}>
+            <h3 style={{ margin: 0 }}>🧘 Cosmic Solfeggio 3D Sound Bath</h3>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+              Embed spatialized binaural beat brainwave entrainment beneath the mix.
+            </span>
+          </div>
+          <button
+            className={`glowing-button secondary ${isSoundBath ? 'active' : ''}`}
+            onClick={() => {
+              const nextVal = !isSoundBath;
+              setIsSoundBath(nextVal);
+              if (!nextVal) {
+                if (leftOscRef.current) { try { leftOscRef.current.stop(); } catch (e) {} leftOscRef.current = null; }
+                if (rightOscRef.current) { try { rightOscRef.current.stop(); } catch (e) {} rightOscRef.current = null; }
+              }
+            }}
+            style={{ margin: 0, padding: '8px 16px', fontSize: '0.78rem', borderColor: isSoundBath ? 'var(--primary-glow)' : '' }}
+          >
+            {isSoundBath ? 'Active (ON)' : 'Bypass (OFF)'}
+          </button>
+        </div>
+
+        {isSoundBath && (
+          <div style={{ marginTop: '15px', animation: 'fadeIn 0.4s ease', padding: '12px', background: 'rgba(0, 242, 255, 0.02)', border: '1px solid rgba(0, 242, 255, 0.08)', borderRadius: '8px', textAlign: 'left' }}>
+            <span style={{ fontSize: '0.7rem', color: 'var(--primary-glow)', textTransform: 'uppercase', display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+              Select Brainwave Mindset Calibration
+            </span>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {[
+                { type: 'alpha', label: 'Alpha Flow (8Hz)', desc: 'Induces calm creativity, clarity, and relaxation.' },
+                { type: 'theta', label: 'Theta Meditation (4Hz)', desc: 'Unlocks deeper intuitive flow, dreaming, and memory consolidation.' },
+                { type: 'delta', label: 'Delta Sleep (2Hz)', desc: 'Restorative somatic recovery and cosmic sub-bass beds.' }
+              ].map(item => (
+                <button
+                  key={item.type}
+                  className={`daw-track-btn ${soundBathType === item.type ? 'active' : ''}`}
+                  onClick={() => setSoundBathType(item.type)}
+                  style={{ fontSize: '0.72rem', padding: '6px 12px', flexGrow: 1, textAlign: 'center', margin: 0 }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <p style={{ fontSize: '0.68rem', color: 'var(--text-dim)', margin: '8px 0 0 0', fontStyle: 'italic' }}>
+              {soundBathType === 'alpha' && "Alpha Flow active: plays left ear at selected frequency and right ear +8Hz, swirling slowly to guide brainwave entrainment."}
+              {soundBathType === 'theta' && "Theta Meditation active: plays left ear at selected frequency and right ear +4Hz, fanning in opposite directions."}
+              {soundBathType === 'delta' && "Delta Sleep active: plays left ear at selected frequency and right ear +2Hz, embedding warm sub-harmonic grids."}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Collapsible Extensive Vocal Analysis Suite */}
