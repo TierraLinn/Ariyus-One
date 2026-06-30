@@ -193,6 +193,48 @@ const VoiceReactiveVisualizer = ({ analyser }) => {
       ctx.restore();
     };
 
+    // Helper: Draw Cymatics Chladni sound-resonance sand-particle patterns
+    const drawCymaticsPattern = (ctx, x, y, r, volume) => {
+      const alpha = 0.35 + (volume / 255) * 0.45;
+      ctx.fillStyle = `rgba(0, 242, 255, ${alpha})`;
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = 'rgba(0, 242, 255, 0.6)';
+
+      const t = Date.now() * 0.0025;
+      const n = 3 + Math.floor((volume / 255) * 5);
+      const m = 2 + Math.floor((volume / 255) * 3);
+
+      for (let pIdx = 0; pIdx < 360; pIdx++) {
+        const angle = (pIdx * Math.PI * 2) / 120 + t * 0.04;
+        const distRatio = Math.sin(pIdx * 0.42) * 0.45 + 0.55;
+        const radiusOffset = distRatio * r * 0.85;
+
+        const cx = radiusOffset * Math.cos(angle);
+        const cy = radiusOffset * Math.sin(angle);
+
+        // Chladni modal pattern formula
+        const chladni = Math.cos(n * cx / 35) * Math.cos(m * cy / 35) - Math.cos(m * cx / 35) * Math.cos(n * cy / 35);
+        const finalRadius = radiusOffset + chladni * 16 * (volume / 255 + 0.25);
+
+        const px = x + finalRadius * Math.cos(angle);
+        const py = y + finalRadius * Math.sin(angle);
+
+        ctx.beginPath();
+        ctx.arc(px, py, 1.6 + (volume / 100), 0, Math.PI * 2);
+        ctx.fill();
+
+        if (pIdx % 6 === 0) {
+          ctx.beginPath();
+          ctx.moveTo(px, py);
+          ctx.lineTo(x + finalRadius * 0.82 * Math.cos(angle + 0.12), y + finalRadius * 0.82 * Math.sin(angle + 0.12));
+          ctx.strokeStyle = `rgba(0, 255, 135, ${alpha * 0.35})`;
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      }
+      ctx.shadowBlur = 0;
+    };
+
     const draw = () => {
       animationRef.current = requestAnimationFrame(draw);
 
@@ -262,6 +304,8 @@ const VoiceReactiveVisualizer = ({ analyser }) => {
         drawSriYantra(ctx, centerX, centerY, radius * 0.55, volume);
       } else if (modeRef.current === 'metatron') {
         drawMetatronsCube(ctx, centerX, centerY, radius * 0.55, volume);
+      } else if (modeRef.current === 'cymatics') {
+        drawCymaticsPattern(ctx, centerX, centerY, radius * 0.55, volume);
       } else {
         drawFlowerOfLife(ctx, centerX, centerY, radius * 0.55, volume);
       }
@@ -307,7 +351,8 @@ const VoiceReactiveVisualizer = ({ analyser }) => {
         {[
           { mode: 'flower', label: '🌸 Flower' },
           { mode: 'sriyantra', label: '📐 Sri Yantra' },
-          { mode: 'metatron', label: '🔷 Metatron' }
+          { mode: 'metatron', label: '🔷 Metatron' },
+          { mode: 'cymatics', label: '🌊 Cymatics' }
         ].map(btn => (
           <button
             key={btn.mode}

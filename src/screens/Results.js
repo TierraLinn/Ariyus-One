@@ -14,6 +14,8 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
   const [showShareModal, setShowShareModal] = useState(false);
   const [isHighVibe, setIsHighVibe] = useState(true);
   const [showAnalysis, setShowAnalysis] = useState(false);
+  const [playVowel, setPlayVowel] = useState('---');
+  const [playBiorhythm, setPlayBiorhythm] = useState('Delta (Rest)');
 
   // Audio elements
   const voiceAudioRef = useRef(null);
@@ -27,7 +29,7 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
   const trackDelayNodeRef = useRef(null);
   const peakingNodeRef = useRef(null);
 
-  const { selectedSong, score = 75, playbackUrl } = currentRecording || {};
+  const { selectedSong, score = 75, playbackUrl, pitchHistory = [] } = currentRecording || {};
   const grade = getGrading(score);
 
   const makeDistortionCurve = (amount) => {
@@ -160,6 +162,50 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
     };
   }, [playbackUrl, selectedSong, currentRecording, selectedFilter, vocalDelay, isHighVibe, selectedFreq]);
 
+  useEffect(() => {
+    let animId;
+    const updatePlayStats = () => {
+      if (isPlaying && voiceAudioRef.current) {
+        const t = voiceAudioRef.current.currentTime;
+        const dur = voiceAudioRef.current.duration || 1;
+        const idx = Math.floor((t / dur) * (pitchHistory?.length || 0));
+        const p = pitchHistory?.[idx] || 0;
+
+        if (p > 50 && p < 1000) {
+          const rp = Math.round(p);
+          // Vowel estimation
+          if (rp < 130) setPlayVowel('/u/ (Oo - Root stabilizer)');
+          else if (rp < 220) setPlayVowel('/o/ (Oh - Sacral creator)');
+          else if (rp < 330) setPlayVowel('/a/ (Ah - Heart awakening)');
+          else if (rp < 440) setPlayVowel('/e/ (Eh - Throat expression)');
+          else setPlayVowel('/i/ (Ee - Crown connector)');
+
+          // Biorhythm estimation
+          if (idx > 5) {
+            const slice = pitchHistory.slice(idx - 5, idx);
+            const dev = Math.max(...slice) - Math.min(...slice);
+            if (dev < 5) setPlayBiorhythm('Alpha (Focused Flow State)');
+            else if (dev > 25) setPlayBiorhythm('Beta (High Intensity Energy)');
+            else if (Math.abs(p - 528) < 10 || Math.abs(p - 432) < 10) setPlayBiorhythm('Gamma (Insight / Healing)');
+            else setPlayBiorhythm('Theta (Relaxation Wavelength)');
+          }
+        } else {
+          setPlayVowel('---');
+          setPlayBiorhythm('Delta (Resting Wavelength)');
+        }
+      } else {
+        setPlayVowel('---');
+        setPlayBiorhythm('Delta (Resting Wavelength)');
+      }
+      animId = requestAnimationFrame(updatePlayStats);
+    };
+
+    if (isPlaying) {
+      animId = requestAnimationFrame(updatePlayStats);
+    }
+    return () => cancelAnimationFrame(animId);
+  }, [isPlaying, pitchHistory]);
+
   // Handle mixing parameter updates
   useEffect(() => {
     if (voiceAudioRef.current) voiceAudioRef.current.volume = voiceVol / 100;
@@ -283,6 +329,18 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
           <button className="glowing-button" onClick={togglePlayback} style={{ width: '100%', marginTop: '20px' }}>
             {isPlaying ? '⏸ Pause Playback' : '▶ Preview Mix'}
           </button>
+
+          {/* Real-time Bio-Resonance HUD */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '15px' }}>
+            <div style={{ background: 'rgba(0,0,0,0.18)', padding: '8px 10px', borderRadius: '6px', textAlign: 'center' }}>
+              <span style={{ fontSize: '0.62rem', color: 'var(--text-dim)', textTransform: 'uppercase', display: 'block' }}>Vowel Wavelength</span>
+              <strong style={{ fontSize: '0.82rem', color: 'var(--primary-glow)', display: 'block', marginTop: '2px' }}>{playVowel}</strong>
+            </div>
+            <div style={{ background: 'rgba(0,0,0,0.18)', padding: '8px 10px', borderRadius: '6px', textAlign: 'center' }}>
+              <span style={{ fontSize: '0.62rem', color: 'var(--text-dim)', textTransform: 'uppercase', display: 'block' }}>Biorhythm Wave</span>
+              <strong style={{ fontSize: '0.82rem', color: 'var(--secondary-glow)', display: 'block', marginTop: '2px' }}>{playBiorhythm}</strong>
+            </div>
+          </div>
         </div>
 
         {/* Mixer Board */}

@@ -32,6 +32,9 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
   const [isMonitoring, setIsMonitoring] = useState(false);
   const monitorGainRef = useRef(null);
 
+  const [liveVowel, setLiveVowel] = useState('---');
+  const [liveBiorhythm, setLiveBiorhythm] = useState('Delta (Rest)');
+
   const toggleMute = () => {
     const nextMuted = !isMuted;
     setIsMuted(nextMuted);
@@ -202,10 +205,33 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
 
         const pitch = getPitchFromAudioData(dataArray, audioCtx.sampleRate);
         if (pitch > 50 && pitch < 1000) {
-          setLivePitch(Math.round(pitch));
-          setPitchHistory(prev => [...prev, pitch]);
+          const roundedPitch = Math.round(pitch);
+          setLivePitch(roundedPitch);
+          setPitchHistory(prev => {
+            const nextHistory = [...prev, pitch];
+            // Compute live biorhythms
+            if (nextHistory.length > 5) {
+              const slice = nextHistory.slice(-5);
+              const dev = Math.max(...slice) - Math.min(...slice);
+              if (dev < 5) setLiveBiorhythm('Alpha (Focused Flow State)');
+              else if (dev > 25) setLiveBiorhythm('Beta (High Intensity Energy)');
+              else if (Math.abs(pitch - 528) < 10 || Math.abs(pitch - 432) < 10) setLiveBiorhythm('Gamma (Insight / Healing)');
+              else setLiveBiorhythm('Theta (Relaxation Wavelength)');
+            }
+            return nextHistory;
+          });
+
+          // Compute vowel phonemes
+          if (roundedPitch < 130) setLiveVowel('/u/ (Oo - Root stabilizer)');
+          else if (roundedPitch < 220) setLiveVowel('/o/ (Oh - Sacral creator)');
+          else if (roundedPitch < 330) setLiveVowel('/a/ (Ah - Heart awakening)');
+          else if (roundedPitch < 440) setLiveVowel('/e/ (Eh - Throat expression)');
+          else setLiveVowel('/i/ (Ee - Crown connector)');
+
         } else {
           setLivePitch(0);
+          setLiveVowel('---');
+          setLiveBiorhythm('Delta (Resting Wavelength)');
         }
 
         if (isRecording) {
@@ -376,6 +402,18 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
               </div>
               <div style={{ fontSize: '1.1rem', fontFamily: 'monospace', color: 'var(--primary-glow)' }}>
                 Pitch: {livePitch > 0 ? `${livePitch} Hz` : '---'}
+              </div>
+            </div>
+
+            {/* Real-time Bio-Resonance HUD */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '12px' }}>
+              <div style={{ background: 'rgba(0,0,0,0.18)', padding: '6px 10px', borderRadius: '6px', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.62rem', color: 'var(--text-dim)', textTransform: 'uppercase', display: 'block' }}>Vowel Vibe</span>
+                <strong style={{ fontSize: '0.88rem', color: 'var(--primary-glow)', display: 'block', marginTop: '2px' }}>{liveVowel}</strong>
+              </div>
+              <div style={{ background: 'rgba(0,0,0,0.18)', padding: '6px 10px', borderRadius: '6px', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.62rem', color: 'var(--text-dim)', textTransform: 'uppercase', display: 'block' }}>Biorhythm Mindset</span>
+                <strong style={{ fontSize: '0.88rem', color: 'var(--secondary-glow)', display: 'block', marginTop: '2px' }}>{liveBiorhythm}</strong>
               </div>
             </div>
 
