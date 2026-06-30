@@ -14,6 +14,7 @@ const Competitions = ({ navigate }) => {
 
   return (
     <div className="screen-wrapper">
+      <div className="floating-notes">🏆</div>
       <h1 className="suspended-title">Competitions</h1>
 
       {/* Active contest details */}

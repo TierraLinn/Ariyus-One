@@ -1120,3 +1120,31 @@ body {
   to { transform: scale(1) translateY(0); opacity: 1; }
 }
 
+/* Custom page transition styles */
+.floating-notes {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  font-size: 2.2rem;
+  opacity: 0.25;
+  animation: spin-suspended 8s infinite ease-in-out;
+  pointer-events: none;
+}
+
+@keyframes spin-suspended {
+  0% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-15px) rotate(180deg); }
+  100% { transform: translateY(0) rotate(360deg); }
+}
+
+.float-slow {
+  animation: float-slight 6s infinite ease-in-out;
+}
+
+@keyframes float-slight {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+

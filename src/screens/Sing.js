@@ -39,6 +39,7 @@ const SongLibrary = ({ navigate, setCurrentRecording }) => {
 
   return (
     <div className="screen-wrapper">
+      <div className="floating-notes">🎶</div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h1 className="suspended-title" style={{ margin: 0 }}>Song Library</h1>
         <button 

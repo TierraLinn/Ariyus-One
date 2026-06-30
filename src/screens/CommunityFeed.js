@@ -38,6 +38,42 @@ const CommunityFeed = ({ navigate, userData, setCurrentRecording }) => {
   const [commentInputs, setCommentInputs] = useState({});
   const [recordingCommentId, setRecordingCommentId] = useState(null);
 
+  const [userCoins, setUserCoins] = useState(() => {
+    const saved = localStorage.getItem('ariyus_local_user');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return parsed.coins !== undefined ? parsed.coins : 500;
+    }
+    return 500;
+  });
+  const [giftingPostId, setGiftingPostId] = useState(null);
+
+  const handleSendGift = (postId, gift) => {
+    if (userCoins < gift.cost) {
+      alert("Insufficient coins balance! Participate in Solfeggio contests to earn more.");
+      return;
+    }
+    const updatedCoins = userCoins - gift.cost;
+    setUserCoins(updatedCoins);
+    const savedUser = localStorage.getItem('ariyus_local_user');
+    if (savedUser) {
+      const parsed = JSON.parse(savedUser);
+      parsed.coins = updatedCoins;
+      localStorage.setItem('ariyus_local_user', JSON.stringify(parsed));
+    }
+    const updatedFeed = feed.map(post => {
+      if (post.id === postId) {
+        const currentGifts = post.gifts || [];
+        return { ...post, gifts: [...currentGifts, gift.icon] };
+      }
+      return post;
+    });
+    setFeed(updatedFeed);
+    localStorage.setItem('ariyus_shared_recordings', JSON.stringify(updatedFeed));
+    alert(`Successfully sent ${gift.name} ${gift.icon}! Deducted ${gift.cost} Coins.`);
+    setGiftingPostId(null);
+  };
+
   const globalAudioRef = useRef(null);
   const commentAudioRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -206,7 +242,13 @@ const CommunityFeed = ({ navigate, userData, setCurrentRecording }) => {
 
   return (
     <div className="screen-wrapper">
-      <h1 className="suspended-title">Community Feed</h1>
+      <div className="floating-notes">💫</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h1 className="suspended-title" style={{ margin: 0 }}>Community Feed</h1>
+        <span style={{ fontSize: '0.88rem', color: 'var(--primary-glow)', background: 'rgba(0,242,255,0.08)', padding: '5px 12px', borderRadius: '15px', border: '1px solid var(--glass-border)', fontWeight: 'bold' }}>
+          💰 {userCoins} Coins
+        </span>
+      </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         {feed.map((item, idx) => (
@@ -235,6 +277,15 @@ const CommunityFeed = ({ navigate, userData, setCurrentRecording }) => {
               "{item.caption || 'Synthesized frequency parameters aligned to grid.'}"
             </p>
 
+            {item.gifts && item.gifts.length > 0 && (
+              <div style={{ margin: '10px 0', fontSize: '0.8rem', display: 'flex', gap: '5px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ color: 'var(--text-dim)' }}>Gifts:</span>
+                {item.gifts.map((icon, gIdx) => (
+                  <span key={gIdx} style={{ fontSize: '1.2rem', filter: 'drop-shadow(0 0 4px var(--primary-glow))' }}>{icon}</span>
+                ))}
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px' }}>
               <button className="glowing-button" style={{ margin: 0, padding: '8px 18px', fontSize: '0.78rem' }} onClick={() => handlePlayToggle(item)}>
                 {activeAudioId === item.id ? '⏸ Pause Playback' : '▶ Play Track'}
@@ -250,6 +301,10 @@ const CommunityFeed = ({ navigate, userData, setCurrentRecording }) => {
 
               <button className="glowing-button secondary" style={{ margin: 0, padding: '8px 18px', fontSize: '0.78rem' }} onClick={() => handleRemix(item)}>
                 🎛️ Remix Console
+              </button>
+
+              <button className="glowing-button secondary" style={{ margin: 0, padding: '8px 18px', fontSize: '0.78rem', borderColor: 'var(--primary-glow)', color: 'var(--primary-glow)' }} onClick={() => setGiftingPostId(item.id)}>
+                🎁 Gift
               </button>
             </div>
 
@@ -321,6 +376,37 @@ const CommunityFeed = ({ navigate, userData, setCurrentRecording }) => {
           </div>
         ))}
       </div>
+
+      {giftingPostId && (
+        <div className="custom-alert-overlay" onClick={() => setGiftingPostId(null)}>
+          <div className="custom-alert-box glass-panel" onClick={(e) => e.stopPropagation()}>
+            <h3>Send a Gift</h3>
+            <p>Select a gift to send. Your balance: <strong>{userCoins} Coins</strong></p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '15px' }}>
+              {[
+                { name: 'Lotus Bloom', cost: 10, icon: '🪷' },
+                { name: 'Crystal Tuning', cost: 50, icon: '💎' },
+                { name: 'Golden Star', cost: 100, icon: '⭐' },
+                { name: 'Cosmic Aura', cost: 250, icon: '🌌' }
+              ].map(gift => (
+                <button 
+                  key={gift.name} 
+                  className="glowing-button secondary"
+                  onClick={() => handleSendGift(giftingPostId, gift)}
+                  style={{ margin: 0, padding: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' }}
+                >
+                  <span style={{ fontSize: '1.8rem' }}>{gift.icon}</span>
+                  <span style={{ fontSize: '0.8rem', color: '#fff' }}>{gift.name}</span>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--primary-glow)' }}>{gift.cost} Coins</span>
+                </button>
+              ))}
+            </div>
+            <button className="glowing-button" onClick={() => setGiftingPostId(null)} style={{ marginTop: '20px', width: '100%' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

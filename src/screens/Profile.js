@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const Profile = ({ userData, handleSignOut }) => {
+const Profile = ({ userData, handleSignOut, navigate }) => {
   const {
     displayName = 'Aura Singer',
     email = 'demo@ariyus.one',
@@ -19,6 +19,34 @@ const Profile = ({ userData, handleSignOut }) => {
       return parsed.filter(item => item.userDisplayName === displayName);
     }
     return [];
+  });
+
+  const [coins] = useState(() => {
+    const saved = localStorage.getItem('ariyus_local_user');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return parsed.coins !== undefined ? parsed.coins : 500;
+    }
+    return 500;
+  });
+
+  const [giftsReceived] = useState(() => {
+    const saved = localStorage.getItem('ariyus_shared_recordings');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      const myPosts = parsed.filter(item => item.userDisplayName === displayName);
+      return myPosts.reduce((acc, item) => acc + (item.gifts?.length || 0), 0);
+    }
+    return 0;
+  });
+
+  const [draftsCount] = useState(() => {
+    const saved = localStorage.getItem('ariyus_drafts');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return parsed.length;
+    }
+    return 0;
   });
 
   useEffect(() => {
@@ -55,6 +83,7 @@ const Profile = ({ userData, handleSignOut }) => {
 
   return (
     <div className="screen-wrapper">
+      <div className="floating-notes">🌌</div>
       <h1 className="suspended-title">Profile Hub</h1>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', alignItems: 'start' }}>
@@ -65,22 +94,35 @@ const Profile = ({ userData, handleSignOut }) => {
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.9rem', marginBottom: '20px' }}>
             <div>
-              <span style={{ color: 'var(--text-dim)' }}>Membership Level: </span>
+              <span style={{ color: 'var(--text-dim)' }}>Membership Tier: </span>
               <strong style={{ color: 'var(--secondary-glow)' }}>{tier}</strong>
             </div>
             <div>
-              <span style={{ color: 'var(--text-dim)' }}>Vocal Level: </span>
+              <span style={{ color: 'var(--text-dim)' }}>Cosmic Level: </span>
               <strong style={{ color: 'var(--primary-glow)' }}>Lvl {levelInfo.level} ({levelInfo.title})</strong>
             </div>
             <div>
-              <span style={{ color: 'var(--text-dim)' }}>Experience Nodes: </span>
+              <span style={{ color: 'var(--text-dim)' }}>Experience: </span>
               <strong style={{ color: '#fff' }}>{xp} XP</strong>
+            </div>
+            <div>
+              <span style={{ color: 'var(--text-dim)' }}>Wallet Balance: </span>
+              <strong style={{ color: 'var(--primary-glow)' }}>💰 {coins} Coins</strong>
+            </div>
+            <div>
+              <span style={{ color: 'var(--text-dim)' }}>Gifts Received: </span>
+              <strong style={{ color: 'var(--secondary-glow)' }}>🎁 {giftsReceived} Gifts</strong>
             </div>
           </div>
 
-          <button className="glowing-button secondary" onClick={handleSignOut} style={{ width: '100%', borderColor: 'var(--secondary-glow)', color: 'var(--secondary-glow)' }}>
-            🔒 Sign Out Resonance Profile
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <button className="glowing-button" onClick={() => navigate('Drafts')} style={{ width: '100%', margin: 0 }}>
+              📁 Open Drafts Folder ({draftsCount})
+            </button>
+            <button className="glowing-button secondary" onClick={handleSignOut} style={{ width: '100%', borderColor: 'var(--secondary-glow)', color: 'var(--secondary-glow)', margin: 0 }}>
+              🔒 Sign Out Profile
+            </button>
+          </div>
         </div>
 
         {/* Setting options */}

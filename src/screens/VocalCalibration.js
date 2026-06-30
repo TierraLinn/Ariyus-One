@@ -153,6 +153,7 @@ const VocalCalibration = ({ navigate, userData, setUserData, isFirebaseConfigure
 
   return (
     <div className="screen-wrapper">
+      <div className="floating-notes">🧬</div>
       <h1 className="suspended-title">Vocal Calibration</h1>
       
       <div className="glass-panel" style={{ textAlign: 'center' }}>

@@ -24,10 +24,34 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
   // Video references
   const videoRef = useRef(null);
 
-  // Pitch tracking references
   const [pitchHistory, setPitchHistory] = useState([]);
   const [lyricsLines, setLyricsLines] = useState([]);
   const [currentLineIndex, setCurrentLineIndex] = useState(0);
+
+  const [isMuted, setIsMuted] = useState(false);
+  const [isMonitoring, setIsMonitoring] = useState(false);
+  const monitorGainRef = useRef(null);
+
+  const toggleMute = () => {
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    if (streamRef.current) {
+      streamRef.current.getAudioTracks().forEach(track => {
+        track.enabled = !nextMuted;
+      });
+    }
+  };
+
+  const toggleMonitoring = () => {
+    const nextMonitoring = !isMonitoring;
+    setIsMonitoring(nextMonitoring);
+    if (nextMonitoring) {
+      alert("Please connect headphones to prevent feedback howl!");
+    }
+    if (monitorGainRef.current && audioContextRef.current) {
+      monitorGainRef.current.gain.setValueAtTime(nextMonitoring ? 1.0 : 0.0, audioContextRef.current.currentTime);
+    }
+  };
 
   useEffect(() => {
     if (song && song.lyrics) {
@@ -146,9 +170,28 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
         
         micSource.connect(analyser);
         delay.connect(analyser);
+      } else if (selectedFilter === 'denoise') {
+        const hp = audioCtx.createBiquadFilter();
+        hp.type = 'highpass';
+        hp.frequency.setValueAtTime(80, audioCtx.currentTime);
+
+        const lp = audioCtx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.setValueAtTime(1200, audioCtx.currentTime);
+
+        micSource.connect(hp);
+        hp.connect(lp);
+        lp.connect(analyser);
       } else {
         micSource.connect(analyser);
       }
+
+      // Setup monitor node
+      const monitorGain = audioCtx.createGain();
+      monitorGain.gain.setValueAtTime(isMonitoring ? 1.0 : 0.0, audioCtx.currentTime);
+      analyser.connect(monitorGain);
+      monitorGain.connect(audioCtx.destination);
+      monitorGainRef.current = monitorGain;
 
       // Connect pitch detection analyzer loop
       const detectPitchLoop = () => {
@@ -207,7 +250,8 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
           selectedSong: song,
           playbackUrl: localPlaybackUrl,
           score,
-          pitchHistory
+          pitchHistory,
+          vocalFilter: selectedFilter
         });
         
         navigate('Results');
@@ -259,7 +303,8 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
         selectedSong: song,
         playbackUrl: "https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Happy%20Life.mp3",
         score,
-        pitchHistory: [220, 222, 218, 220, 221]
+        pitchHistory: [220, 222, 218, 220, 221],
+        vocalFilter: selectedFilter
       });
       navigate('Results');
     }
@@ -337,7 +382,7 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
             {/* Live Filter Config */}
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '15px' }}>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Vocal Effect:</span>
-              {['none', 'studio', 'reverb', 'echo'].map(filter => (
+              {['none', 'studio', 'reverb', 'echo', 'denoise'].map(filter => (
                 <button
                   key={filter}
                   className={`daw-track-btn ${selectedFilter === filter ? 'active' : ''}`}
@@ -375,7 +420,7 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
       </div>
 
       {/* Recording Control Actions */}
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginTop: '25px' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginTop: '25px', flexWrap: 'wrap' }}>
         {!isRecording ? (
           <button className="glowing-button" onClick={startRecording} style={{ margin: 0, padding: '14px 35px' }}>
             🎙️ Start Recording Session
@@ -385,6 +430,24 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
             ⏹️ Stop & Compile Performance
           </button>
         )}
+
+        <button 
+          className={`glowing-button secondary ${isMuted ? 'active' : ''}`}
+          onClick={toggleMute}
+          style={{ margin: 0, padding: '14px 20px', borderColor: isMuted ? 'var(--secondary-glow)' : '' }}
+          disabled={!isRecording}
+        >
+          {isMuted ? '🔇 Muted' : '🎙️ Mute Mic'}
+        </button>
+
+        <button 
+          className={`glowing-button secondary ${isMonitoring ? 'active' : ''}`}
+          onClick={toggleMonitoring}
+          style={{ margin: 0, padding: '14px 20px', borderColor: isMonitoring ? 'var(--primary-glow)' : '' }}
+          disabled={!isRecording}
+        >
+          {isMonitoring ? '🎧 Monitor ON' : '🎧 Monitor OFF'}
+        </button>
 
         <button 
           className={`glowing-button secondary ${isVideoMode ? 'active' : ''}`}
