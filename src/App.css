@@ -1065,3 +1065,58 @@ body {
   pointer-events: none;
 }
 
+/* Custom Alert Overlay Modal */
+.custom-alert-overlay {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(4, 3, 24, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 99999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  animation: fadeInModal 0.25s ease-out;
+}
+
+.custom-alert-box {
+  max-width: 460px;
+  width: 90%;
+  margin: 0 auto;
+  border-color: var(--secondary-glow);
+  box-shadow: 0 0 25px rgba(255, 0, 193, 0.25), inset 0 0 20px rgba(255, 0, 193, 0.05);
+  text-align: center !important;
+  animation: scaleUpModal 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.custom-alert-box h3 {
+  color: #fff;
+  text-align: center;
+  justify-content: center;
+  text-shadow: 0 0 10px var(--secondary-glow);
+  margin-bottom: 1rem;
+  font-size: 1.3rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+}
+
+.custom-alert-box p {
+  text-align: center;
+  font-size: 1.05rem;
+  color: var(--text-color);
+  margin-bottom: 1.5rem;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+@keyframes fadeInModal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleUpModal {
+  from { transform: scale(0.9) translateY(10px); opacity: 0; }
+  to { transform: scale(1) translateY(0); opacity: 1; }
+}
+

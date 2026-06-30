@@ -1,11 +1,44 @@
 import React, { useState, useEffect, useRef } from 'react';
 import VoiceReactiveVisualizer from '../components/VoiceReactiveVisualizer';
 
-const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError, activeChallenge, handleCompleteChallenge }) => {
+const createReverbImpulseResponse = (ctx, duration = 2.0, decay = 1.5) => {
+  const sampleRate = ctx.sampleRate;
+  const length = sampleRate * duration;
+  const impulse = ctx.createBuffer(2, length, sampleRate);
+  const left = impulse.getChannelData(0);
+  const right = impulse.getChannelData(1);
+
+  for (let i = 0; i < length; i++) {
+    const percent = i / length;
+    const val = (Math.random() * 2 - 1) * Math.pow(1 - percent, decay);
+    left[i] = val;
+    right[i] = val;
+  }
+  return impulse;
+};
+
+const makeDistortionCurve = (amount) => {
+  if (amount <= 0) return null;
+  const k = amount;
+  const n_samples = 44100;
+  const curve = new Float32Array(n_samples);
+  const deg = Math.PI / 180;
+  for (let i = 0; i < n_samples; ++i) {
+    const x = (i * 2) / n_samples - 1;
+    curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+  }
+  return curve;
+};
+
+const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError, activeChallenge, handleCompleteChallenge, duetPartner }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordTime, setRecordTime] = useState(0);
   const [activeLineIdx, setActiveLineIdx] = useState(0);
   const [lyricsLines, setLyricsLines] = useState([]);
+  
+  // Advanced features states
+  const [isVideoMode, setIsVideoMode] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState('studio'); // 'none', 'studio', 'reverb', 'echo'
   
   // Challenge tracker states
   const [livePitch, setLivePitch] = useState(0);
@@ -23,6 +56,9 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
   const audioChunksRef = useRef([]);
   const [analyser, setAnalyser] = useState(null);
 
+  // Video Ref
+  const videoRef = useRef(null);
+
   // Synthesizer / Oscillator Refs
   const humOscRef = useRef(null);
   const humGainRef = useRef(null);
@@ -38,6 +74,7 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
   const syncPlaybackTimerRef = useRef(null);
   const lyricsContainerRef = useRef(null);
   const backingAudioElementRef = useRef(null);
+  const duetAudioElementRef = useRef(null);
   const prompterCanvasRef = useRef(null);
 
   // Autocorrelation Pitch Tracker helper for live scanning during recording
@@ -97,7 +134,7 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
   // Intention presets mapping to target Hertz
   const getHzFromSongKey = (key = '') => {
     const numeric = parseInt(key.replace(/[^0-9]/g, ''));
-    if (numeric && [396, 417, 432, 528, 639, 741, 852].includes(numeric)) {
+    if (numeric && [396, 417, 432, 444, 528, 639, 741, 852, 963].includes(numeric)) {
       return numeric;
     }
     return 528;
@@ -107,10 +144,10 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
 
   useEffect(() => {
     const currentAudio = backingAudioElementRef.current;
+    const duetAudio = duetAudioElementRef.current;
     return () => {
-      if (currentAudio) {
-        currentAudio.pause();
-      }
+      if (currentAudio) currentAudio.pause();
+      if (duetAudio) duetAudio.pause();
       clearInterval(synthIntervalRef.current);
       stopHumOscillator();
     };
@@ -353,9 +390,18 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
     try {
       audioChunksRef.current = [];
       
-      // Request mic stream
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      // Request mic stream and camera stream if video mode is enabled
+      const constraints = {
+        audio: true,
+        video: isVideoMode ? { width: 640, height: 480 } : false
+      };
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
+
+      if (isVideoMode && videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
 
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       const audioCtx = new AudioContextClass();
@@ -364,13 +410,79 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
       const sourceNode = audioCtx.createMediaStreamSource(stream);
       const analyserNode = audioCtx.createAnalyser();
       analyserNode.fftSize = 128;
-      sourceNode.connect(analyserNode);
+      
+      // Set up Smule / StarMaker style vocal filter routing
+      let lastNode = sourceNode;
+
+      if (selectedFilter === 'studio') {
+        // High-pass filter to cut mud, High-shelf boost for crispness, tube saturation
+        const lowCut = audioCtx.createBiquadFilter();
+        lowCut.type = 'highpass';
+        lowCut.frequency.setValueAtTime(120, audioCtx.currentTime);
+
+        const highBoost = audioCtx.createBiquadFilter();
+        highBoost.type = 'highshelf';
+        highBoost.frequency.setValueAtTime(6000, audioCtx.currentTime);
+        highBoost.gain.setValueAtTime(4.5, audioCtx.currentTime);
+
+        const saturator = audioCtx.createWaveShaper();
+        saturator.curve = makeDistortionCurve(15); // subtle tube drive
+
+        lastNode.connect(lowCut);
+        lowCut.connect(highBoost);
+        highBoost.connect(saturator);
+        lastNode = saturator;
+      } else if (selectedFilter === 'reverb') {
+        // Convolver Reverb Simulation
+        const convolver = audioCtx.createConvolver();
+        convolver.buffer = createReverbImpulseResponse(audioCtx, 2.2, 1.6);
+
+        const dryGain = audioCtx.createGain();
+        const wetGain = audioCtx.createGain();
+        dryGain.gain.setValueAtTime(0.65, audioCtx.currentTime);
+        wetGain.gain.setValueAtTime(0.55, audioCtx.currentTime);
+
+        lastNode.connect(dryGain);
+        lastNode.connect(convolver);
+        convolver.connect(wetGain);
+
+        const mixer = audioCtx.createGain();
+        dryGain.connect(mixer);
+        wetGain.connect(mixer);
+        lastNode = mixer;
+      } else if (selectedFilter === 'echo') {
+        // Feedback echo delay line
+        const delay = audioCtx.createDelay(1.0);
+        delay.delayTime.setValueAtTime(0.35, audioCtx.currentTime);
+
+        const feedback = audioCtx.createGain();
+        feedback.gain.setValueAtTime(0.42, audioCtx.currentTime);
+
+        delay.connect(feedback);
+        feedback.connect(delay);
+
+        const dryGain = audioCtx.createGain();
+        const wetGain = audioCtx.createGain();
+        dryGain.gain.setValueAtTime(1.0, audioCtx.currentTime);
+        wetGain.gain.setValueAtTime(0.40, audioCtx.currentTime);
+
+        lastNode.connect(dryGain);
+        lastNode.connect(delay);
+        delay.connect(wetGain);
+
+        const mixer = audioCtx.createGain();
+        dryGain.connect(mixer);
+        wetGain.connect(mixer);
+        lastNode = mixer;
+      }
+
+      lastNode.connect(analyserNode);
       setAnalyser(analyserNode);
 
       // Start Hum
       startHumOscillator(audioCtx);
 
-      // Media recorder
+      // Media recorder (standard audio capture)
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       mediaRecorder.ondataavailable = (event) => {
@@ -383,13 +495,22 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/mp3' });
         const playbackUrl = URL.createObjectURL(audioBlob);
         
+        const finalSig = generateVoiceSignature();
+        const finalGrade = calculatePerformanceGrade(finalSig);
+        const finalBadges = checkBadgesUnlocked(finalSig);
+
         setCurrentRecording({
           playbackUrl,
           selectedSong: selectedSong || { title: 'Freestyle Resonance', artist: 'Self', audioUrl: '' },
-          signature: generateVoiceSignature(),
+          signature: finalSig,
           tones: generateToneProfile(),
           recordTime,
-          analyser: analyserNode
+          analyser: analyserNode,
+          grade: finalGrade,
+          badgesEarned: finalBadges,
+          filterUsed: selectedFilter,
+          videoEnabled: isVideoMode,
+          duetPartner: duetPartner
         });
 
         navigate('Results');
@@ -404,6 +525,16 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
           playBackingSuccess = true;
         } catch (e) {
           console.warn("Backing track element failed, starting synth guide...", e);
+        }
+      }
+
+      // Play duet partner track in sync
+      if (duetPartner && duetAudioElementRef.current) {
+        duetAudioElementRef.current.currentTime = 0;
+        try {
+          await duetAudioElementRef.current.play();
+        } catch (e) {
+          console.warn("Duet partner track playback failed:", e);
         }
       }
 
@@ -452,7 +583,7 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
       }, 100);
 
     } catch (err) {
-      console.warn("Microphone access failed. Starting in simulated sandbox mode.", err);
+      console.warn("Camera or Microphone access blocked. Falling back to sandbox loop.", err);
       
       // Sandbox: Web Audio guide tones only
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -507,6 +638,9 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
     if (backingAudioElementRef.current) {
       backingAudioElementRef.current.pause();
     }
+    if (duetAudioElementRef.current) {
+      duetAudioElementRef.current.pause();
+    }
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
@@ -520,6 +654,9 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
 
       const sig = generateVoiceSignature();
       const ch2Success = activeChallenge === 'ch2' && sig.stability >= 90;
+      
+      const finalGrade = calculatePerformanceGrade(sig);
+      const finalBadges = checkBadgesUnlocked(sig);
 
       setCurrentRecording({
         playbackUrl,
@@ -527,10 +664,38 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
         signature: sig,
         tones: generateToneProfile(),
         recordTime,
-        challengeCompleted: challengeSuccess || ch2Success
+        challengeCompleted: challengeSuccess || ch2Success,
+        grade: finalGrade,
+        badgesEarned: finalBadges,
+        filterUsed: selectedFilter,
+        videoEnabled: isVideoMode,
+        duetPartner: duetPartner
       });
       navigate('Results');
     }
+  };
+
+  const calculatePerformanceGrade = (sig) => {
+    const score = Math.round((sig.stability + sig.breath + sig.energy) / 3);
+    if (score >= 90) return { score, letter: 'A+', color: '#00ff87' };
+    if (score >= 80) return { score, letter: 'A', color: '#00f2ff' };
+    if (score >= 70) return { score, letter: 'B', color: '#ffb700' };
+    if (score >= 60) return { score, letter: 'C', color: '#ff7000' };
+    return { score, letter: 'D', color: '#ff3b30' };
+  };
+
+  const checkBadgesUnlocked = (sig) => {
+    const list = [];
+    if (challengeSuccess || (activeChallenge === 'ch1' && sustainProgress >= 6.0)) {
+      list.push({ id: 'badge_breath', title: 'Cosmic Breath Initiate', icon: '🌬️', desc: 'Hold a steady 432 Hz tone continuously for 6.0 seconds.' });
+    }
+    if (sig.stability >= 90) {
+      list.push({ id: 'badge_quantum', title: 'Quantum Vocalist', icon: '💎', desc: 'Achieve a pitch stability score of 90% or higher.' });
+    }
+    if (selectedSong && selectedSong.key) {
+      list.push({ id: 'badge_solfeggio', title: 'Solfeggio Adept', icon: '🔱', desc: 'Synthesize performance audio in sync with target frequencies.' });
+    }
+    return list;
   };
 
   const generateVoiceSignature = () => {
@@ -616,9 +781,21 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <audio 
         ref={backingAudioElementRef} 
-        src={selectedSong?.audioUrl || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'} 
+        src={selectedSong?.audioUrl || 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Happy%20Life.mp3'} 
         style={{ display: 'none' }} 
+        preload="auto"
+        crossOrigin="anonymous"
       />
+      
+      {duetPartner && (
+        <audio 
+          ref={duetAudioElementRef} 
+          src={duetPartner.playbackUrl} 
+          style={{ display: 'none' }} 
+          preload="auto"
+          crossOrigin="anonymous"
+        />
+      )}
       
       {/* Title */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -633,80 +810,133 @@ const RecordingStudio = ({ selectedSong, setCurrentRecording, navigate, setError
         </button>
       </div>
 
-      {/* Main Studio Console */}
-      <div className="glass-panel" style={{ textAlign: 'center', borderColor: isRecording ? 'var(--secondary-glow)' : 'var(--glass-border)' }}>
-        
-        {/* Active Challenge HUD Overlay */}
-        {activeChallenge === 'ch1' && (
-          <div className="glass-panel" style={{ margin: '0 0 15px 0', borderColor: 'var(--primary-glow)', background: 'rgba(0, 242, 255, 0.05)', display: 'flex', flexDirection: 'column', gap: '8px', textAlign: 'left' }}>
-            <h4 style={{ color: '#fff', margin: 0 }}>🏆 Active Challenge: Cosmic Breath</h4>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', margin: 0 }}>Sustain any vocal vowel at 432Hz continuously for 6.0 seconds.</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginTop: '5px' }}>
-              <div className="progress-track" style={{ height: '8px', flexGrow: 1 }}>
-                <div className="progress-fill" style={{ width: `${(sustainProgress / 6.0) * 100}%`, background: 'var(--primary-glow)' }} />
-              </div>
-              <span style={{ fontSize: '0.85rem', fontFamily: 'monospace', minWidth: '70px', textAlign: 'right' }}>
-                {sustainProgress.toFixed(1)}s / 6.0s
-              </span>
-            </div>
-            {challengeSuccess && (
-              <span style={{ color: '#00ff87', fontSize: '0.82rem', fontWeight: 'bold' }}>✓ Sustain limit reached! Challenge aligned.</span>
-            )}
-          </div>
+      {/* Main Studio Console - Relative Video Container */}
+      <div className="glass-panel" style={{ 
+        position: 'relative', 
+        height: '350px', 
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        overflow: 'hidden',
+        borderColor: isRecording ? 'var(--secondary-glow)' : 'var(--glass-border)',
+        padding: 0
+      }}>
+        {isVideoMode && (
+          <video 
+            ref={videoRef} 
+            autoPlay 
+            playsInline 
+            muted 
+            style={{ 
+              position: 'absolute', 
+              width: '100%', 
+              height: '100%', 
+              objectFit: 'cover',
+              zIndex: 1,
+              opacity: 0.62
+            }} 
+          />
         )}
+        <div style={{ position: 'absolute', width: '100%', height: '100%', zIndex: 2 }}>
+          <VoiceReactiveVisualizer analyser={analyser} />
+        </div>
+      </div>
 
-        {activeChallenge === 'ch2' && (
-          <div className="glass-panel" style={{ margin: '0 0 15px 0', borderColor: 'var(--secondary-glow)', background: 'rgba(255, 0, 193, 0.05)', textAlign: 'left' }}>
-            <h4 style={{ color: '#fff', margin: 0 }}>🏆 Active Challenge: Harmonic Alignment</h4>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', margin: '4px 0 0 0' }}>Complete a performance with a Pitch Stability score of 90% or above (A+ Grade).</p>
-          </div>
-        )}
-
-        {/* Dynamic visualizer */}
-        <VoiceReactiveVisualizer analyser={analyser} />
-
-        {/* Dynamic Hertz & Playback parameters */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', margin: '10px 0', alignItems: 'center' }}>
-          <div style={{ fontSize: '1.25rem', fontFamily: 'monospace', textShadow: '0 0 8px var(--primary-glow)' }}>
+      {/* Dynamic parameters Dashboard */}
+      <div className="glass-panel" style={{ margin: 0, padding: '15px' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ fontSize: '1.2rem', fontFamily: 'monospace', textShadow: '0 0 8px var(--primary-glow)' }}>
             Duration: {Math.floor(recordTime / 60)}:{(recordTime % 60).toFixed(1).padStart(4, '0')}
           </div>
           {isRecording && (
-            <div style={{ fontSize: '1.25rem', fontFamily: 'monospace', color: 'var(--primary-glow)', textShadow: '0 0 6px var(--primary-glow)' }}>
+            <div style={{ fontSize: '1.2rem', fontFamily: 'monospace', color: 'var(--primary-glow)', textShadow: '0 0 6px var(--primary-glow)' }}>
               Vocal Pitch: {livePitch ? `${livePitch} Hz` : 'Scanning...'}
             </div>
           )}
-          <div className="level-badge" style={{ fontSize: '0.78rem', background: 'rgba(0, 242, 255, 0.15)', border: '1px solid var(--primary-glow)' }}>
+          <div className="level-badge" style={{ fontSize: '0.78rem', background: 'rgba(0, 242, 255, 0.15)', border: '1px solid var(--primary-glow)', margin: 0 }}>
             Alignment Target: {targetHz} Hz
           </div>
         </div>
 
-        {/* Record, Stop, and Hum options */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
-          {!isRecording ? (
-            <button className="glowing-button" onClick={startAudioCapture}>
-              ⚡ Initiate Alignment (Start Recording)
+        {/* Vocal Filters Selection (StarMaker & Smule style) */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '15px', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', textTransform: 'uppercase', fontWeight: 'bold' }}>Vocal Filter:</span>
+          {['none', 'studio', 'reverb', 'echo'].map(filter => (
+            <button
+              key={filter}
+              className={`daw-track-btn ${selectedFilter === filter ? 'active solo' : ''}`}
+              onClick={() => setSelectedFilter(filter)}
+              disabled={isRecording}
+              style={{ fontSize: '0.7rem', padding: '3px 8px', textTransform: 'capitalize' }}
+            >
+              {filter}
             </button>
-          ) : (
-            <button className="glowing-button secondary" onClick={stopAudioCapture}>
-              ⏹️ Harmonize & Finalize
-            </button>
-          )}
-
-          {/* Alignment Carrier Hum Option */}
-          <button 
-            className={`glowing-button secondary ${playHum ? 'active' : ''}`}
-            onClick={() => setPlayHum(!playHum)}
-            style={{ margin: 0 }}
-          >
-            {playHum ? '✓ Alignment Hum ON' : '⏵ Alignment Hum OFF'}
-          </button>
+          ))}
         </div>
+
         {isSynthPlaying && (
-          <p style={{ color: 'var(--primary-glow)', fontSize: '0.8rem', margin: '8px 0 0 0', fontStyle: 'italic' }}>
-            Backing track stream offline. Generating synthesized Solfeggio guide beat.
+          <p style={{ color: 'var(--primary-glow)', fontSize: '0.72rem', margin: '10px 0 0 0', fontStyle: 'italic', textAlign: 'center' }}>
+            Backing track offline. Synthesizing Solfeggio guide beat.
           </p>
         )}
       </div>
+
+      {/* Record, Stop, and Hum options */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+        {!isRecording ? (
+          <button className="glowing-button" onClick={startAudioCapture} style={{ margin: 0 }}>
+            ⚡ Initiate Alignment (Start Recording)
+          </button>
+        ) : (
+          <button className="glowing-button secondary" onClick={stopAudioCapture} style={{ margin: 0 }}>
+            ⏹️ Harmonize & Finalize
+          </button>
+        )}
+
+        <button 
+          className={`glowing-button secondary ${isVideoMode ? 'active' : ''}`}
+          onClick={() => setIsVideoMode(!isVideoMode)}
+          style={{ margin: 0 }}
+          disabled={isRecording}
+        >
+          {isVideoMode ? '📹 Video Capture ON' : '📷 Camera OFF'}
+        </button>
+
+        <button 
+          className={`glowing-button secondary ${playHum ? 'active' : ''}`}
+          onClick={() => setPlayHum(!playHum)}
+          style={{ margin: 0 }}
+        >
+          {playHum ? '✓ Hum ON' : '⏵ Hum OFF'}
+        </button>
+      </div>
+
+      {/* Active Challenge HUD Overlay */}
+      {activeChallenge === 'ch1' && (
+        <div className="glass-panel" style={{ margin: 0, borderColor: 'var(--primary-glow)', background: 'rgba(0, 242, 255, 0.05)', display: 'flex', flexDirection: 'column', gap: '8px', textAlign: 'left' }}>
+          <h4 style={{ color: '#fff', margin: 0 }}>🏆 Active Challenge: Cosmic Breath</h4>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-dim)', margin: 0 }}>Sustain any vocal vowel at 432Hz continuously for 6.0 seconds.</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginTop: '5px' }}>
+            <div className="progress-track" style={{ height: '8px', flexGrow: 1 }}>
+              <div className="progress-fill" style={{ width: `${(sustainProgress / 6.0) * 100}%`, background: 'var(--primary-glow)' }} />
+            </div>
+            <span style={{ fontSize: '0.85rem', fontFamily: 'monospace', minWidth: '70px', textAlign: 'right' }}>
+              {sustainProgress.toFixed(1)}s / 6.0s
+            </span>
+          </div>
+          {challengeSuccess && (
+            <span style={{ color: '#00ff87', fontSize: '0.82rem', fontWeight: 'bold' }}>✓ Sustain limit reached! Challenge aligned.</span>
+          )}
+        </div>
+      )}
+
+      {activeChallenge === 'ch2' && (
+        <div className="glass-panel" style={{ margin: 0, borderColor: 'var(--secondary-glow)', background: 'rgba(255, 0, 193, 0.05)', textAlign: 'left' }}>
+          <h4 style={{ color: '#fff', margin: 0 }}>🏆 Active Challenge: Harmonic Alignment</h4>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-dim)', margin: '4px 0 0 0' }}>Complete a performance with a Pitch Stability score of 90% or above (A+ Grade).</p>
+        </div>
+      )}
 
       {/* Prompter */}
       <div className="glass-panel" style={{ margin: 0 }}>

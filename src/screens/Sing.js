@@ -4,14 +4,29 @@ import { collection, addDoc, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const defaultCatalog = [
-  { id: 'ds1', title: 'Blinding Lights', artist: 'The Weeknd', genre: 'Synthwave', mood: 'Energetic', bpm: 171, key: 'F minor', difficulty: 'Medium', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3', lyrics: 'I been tryna call\nI been on my own for long enough\nMaybe you can show me how to love, maybe\nI going through withdrawals\nYou don\'t even have to do too much\nYou can turn me on with just a touch, baby' },
-  { id: 'ds2', title: 'Imagine', artist: 'John Lennon', genre: 'Classic Rock', mood: 'Calm', bpm: 75, key: 'C major', difficulty: 'Easy', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3', lyrics: 'Imagine there\'s no heaven\nIt\'s easy if you try\nNo hell below us\nAbove us, only sky\nImagine all the people\nLiving for today' },
-  { id: 'ds3', title: 'Cosmic Resonance', artist: 'Solfeggio Choir', genre: 'Ambient', mood: 'Mystical', bpm: 60, key: '528Hz', difficulty: 'Easy', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3', lyrics: 'Oooohhhhhh\nAhaaaaahhhhh\nResonate with the light\nDNA healing tonight\nOooohhhhhh' },
-  { id: 'ds4', title: 'Rolling in the Deep', artist: 'Adele', genre: 'Soul', mood: 'Emotional', bpm: 105, key: 'C minor', difficulty: 'Hard', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3', lyrics: 'There\'s a fire starting in my heart\nReaching a fever pitch and it\'s bringing me out the dark\nFinally, I can see you crystal clear\nGo ahead and sell me out and I\'ll lay your ship bare' }
+  { id: 'ds1', title: 'Blinding Lights', artist: 'The Weeknd', genre: 'Synthwave', mood: 'Energetic', bpm: 171, key: 'F minor', difficulty: 'Medium', audioUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Happy%20Life.mp3', lyrics: 'I been tryna call\nI been on my own for long enough\nMaybe you can show me how to love, maybe\nI going through withdrawals\nYou don\'t even have to do too much\nYou can turn me on with just a touch, baby' },
+  { id: 'ds2', title: 'Imagine', artist: 'John Lennon', genre: 'Classic Rock', mood: 'Calm', bpm: 75, key: 'C major', difficulty: 'Easy', audioUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Planning.mp3', lyrics: 'Imagine there\'s no heaven\nIt\'s easy if you try\nNo hell below us\nAbove us, only sky\nImagine all the people\nLiving for today' },
+  { id: 'ds3', title: 'Cosmic Resonance', artist: 'Solfeggio Choir', genre: 'Ambient', mood: 'Mystical', bpm: 60, key: '528Hz', difficulty: 'Easy', audioUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Illusionist.mp3', lyrics: 'Oooohhhhhh\nAhaaaaahhhhh\nResonate with the light\nDNA healing tonight\nOooohhhhhh' },
+  { id: 'ds4', title: 'Rolling in the Deep', artist: 'Adele', genre: 'Soul', mood: 'Emotional', bpm: 105, key: 'C minor', difficulty: 'Hard', audioUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Newness.mp3', lyrics: 'There\'s a fire starting in my heart\nReaching a fever pitch and it\'s bringing me out the dark\nFinally, I can see you crystal clear\nGo ahead and sell me out and I\'ll lay your ship bare' },
+  { id: 'ds5', title: 'Flowers', artist: 'Miley Cyrus', genre: 'Pop', mood: 'Independent', bpm: 118, key: 'A minor', difficulty: 'Medium', audioUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Happy%20Life.mp3', lyrics: 'I can buy myself flowers\nWrite my name in the sand\nTalk to myself for hours\nSay things you don\'t understand\nI can take myself dancing\nAnd I can hold my own hand' },
+  { id: 'ds6', title: 'As It Was', artist: 'Harry Styles', genre: 'Indie Pop', mood: 'Nostalgic', bpm: 174, key: 'A major', difficulty: 'Easy', audioUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Cinemato.mp3', lyrics: 'Holdin\' me back\nGravity\'s holdin\' me back\nI want you to hold out the palm of your hand\nWhy don\'t we leave it at that?\nNothin\' to say\nWhen everything gets in the way' },
+  { id: 'ds7', title: 'DNA Healing Vibrations', artist: 'Resonance Project', genre: 'Meditation', mood: 'Mystical', bpm: 63, key: '444Hz', difficulty: 'Easy', audioUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/My%20Inventions.mp3', lyrics: 'Breathe in the key of David\nFeel the physical renewal\nCellular grounding harmonics\nDNA repairing focus\nDeep breath...' },
+  { id: 'ds8', title: 'Crown Awakening', artist: 'Pineal Soundscapes', genre: 'Spiritual', mood: 'Ethereal', bpm: 55, key: '963Hz', difficulty: 'Easy', audioUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Science%20Fiction.mp3', lyrics: 'Connect to the cosmic source\nCrown chakra opening\nPineal gland activation\nPure frequency synchronization\nUniverse as one...' },
+  { id: 'ds9', title: 'Stay', artist: 'The Kid LAROI & Justin Bieber', genre: 'Pop', mood: 'Energetic', bpm: 170, key: 'C# minor', difficulty: 'Medium', audioUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Dubstepper.mp3', lyrics: 'I do the same thing I told you that I never would\nI told you I\'d change, even when I knew I never could\nI know that I can\'t find nobody else as good as you\nNeed you to stay, need you to stay, yeah' },
+  { id: 'ds10', title: 'Bad Guy', artist: 'Billie Eilish', genre: 'Alt Pop', mood: 'Moody', bpm: 135, key: 'G minor', difficulty: 'Medium', audioUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Fury.mp3', lyrics: 'White shirt now red, my bloody nose\nSleepin\', you\'re on your tippy toes\nCreepin\' around like no one knows\nThink you\'re so criminal\nBruises on both my knees for you' },
+  { id: 'ds11', title: 'Levitating', artist: 'Dua Lipa', genre: 'Disco Pop', mood: 'Energetic', bpm: 103, key: 'B minor', difficulty: 'Medium', audioUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Gamer%20Guy.mp3', lyrics: 'If you wanna run away with me, I know a galaxy\nAnd I can take you for a ride\nI had a premonition that we fell into a rhythm\nWhere the music don\'t stop for life\nGlitter in the sky, glitter in my eyes' },
+  { id: 'ds12', title: 'Perfect', artist: 'Ed Sheeran', genre: 'Acoustic', mood: 'Romantic', bpm: 95, key: 'Ab major', difficulty: 'Easy', audioUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Mysterious.mp3', lyrics: 'I found a love for me\nDarling, just dive right in and follow my lead\nWell, I found a girl, beautiful and sweet\nOh, I never knew you were the someone waiting for me' },
+  { id: 'ds13', title: 'Liberation Vibrations', artist: 'Root Solfeggio', genre: 'Meditation', mood: 'Calm', bpm: 70, key: '396Hz', difficulty: 'Easy', audioUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Outsider.mp3', lyrics: 'Grounding into the earth\nReleasing deep sub-conscious fear\nRoot chakra activation\nAbsolute safety and peace...' },
+  { id: 'ds14', title: 'Change Activation', artist: 'Sacral Soundscapes', genre: 'Meditation', mood: 'Calm', bpm: 65, key: '417Hz', difficulty: 'Easy', audioUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Party%20Time.mp3', lyrics: 'Undoing negative situations\nClearing past traumatic cells\nSacral energy flow\nWelcoming alignment and change...' },
+  { id: 'ds15', title: 'Golden Solitude', artist: 'Throat Purifier', genre: 'Acoustic', mood: 'Harmonic', bpm: 80, key: '741Hz', difficulty: 'Medium', audioUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Sports%20Spirit.mp3', lyrics: 'Cleansing intuitive expressions\nPurifying throat chakra blockages\nSpeaking the natural truth\nInner golden clarity...' }
 ];
 
 const SongLibrary = ({ navigate, userData }) => {
-  const [songs, setSongs] = useState([]);
+  const [songs, setSongs] = useState(() => {
+    const localSongsStr = localStorage.getItem('ariyus_custom_songs');
+    const localSongs = localSongsStr ? JSON.parse(localSongsStr) : [];
+    return [...defaultCatalog, ...localSongs];
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMood, setSelectedMood] = useState('All');
   const [selectedDifficulty, setSelectedDifficulty] = useState('All');
@@ -42,11 +57,7 @@ const SongLibrary = ({ navigate, userData }) => {
       });
       setSongs([...defaultCatalog, ...firebaseSongs]);
     } catch (e) {
-      console.warn("Failed to load catalog from Firestore, loading local backups:", e);
-      // Fallback
-      const localSongsStr = localStorage.getItem('ariyus_custom_songs');
-      const localSongs = localSongsStr ? JSON.parse(localSongsStr) : [];
-      setSongs([...defaultCatalog, ...localSongs]);
+      console.warn("Failed to load catalog from Firestore:", e);
     }
   };
 
@@ -59,7 +70,7 @@ const SongLibrary = ({ navigate, userData }) => {
     if (!newTitle || !newArtist) return;
 
     setIsUploading(true);
-    let finalAudioUrl = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3';
+    let finalAudioUrl = 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Happy%20Life.mp3';
     const songId = 'song_' + Date.now();
 
     try {

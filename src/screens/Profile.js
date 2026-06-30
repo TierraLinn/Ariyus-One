@@ -4,7 +4,6 @@ import { db } from '../firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
 const Profile = ({ userData, handleSignOut, navigate, theme, setTheme, handleUpgrade }) => {
-  const [recordings, setRecordings] = useState([]);
   const [playingId, setPlayingId] = useState(null);
   const audioRef = React.useRef(null);
 
@@ -14,6 +13,15 @@ const Profile = ({ userData, handleSignOut, navigate, theme, setTheme, handleUpg
     xp = 120,
     voiceSignature = null
   } = userData || {};
+
+  const [recordings, setRecordings] = useState(() => {
+    const saved = localStorage.getItem('ariyus_shared_recordings');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return parsed.filter(item => item.userDisplayName === displayName || item.userId === (userData?.uid || ''));
+    }
+    return [];
+  });
 
   // Level computation matching HomeNexus
   const getJourneyRank = (currentXp) => {
@@ -41,14 +49,7 @@ const Profile = ({ userData, handleSignOut, navigate, theme, setTheme, handleUpg
         });
         setRecordings(userRecs);
       } catch (err) {
-        console.warn("Firestore user recordings load failed, falling back locally:", err);
-        // Fallback local storage
-        const saved = localStorage.getItem('ariyus_shared_recordings');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          const userRecs = parsed.filter(item => item.userDisplayName === displayName || item.userId === userData.uid);
-          setRecordings(userRecs);
-        }
+        console.warn("Firestore user recordings load failed:", err);
       }
     };
 
@@ -116,6 +117,44 @@ const Profile = ({ userData, handleSignOut, navigate, theme, setTheme, handleUpg
         </div>
         <div className="progress-track" style={{ height: '10px', marginBottom: '12px' }}>
           <div className="progress-fill" style={{ width: `${rankProgress}%`, background: 'linear-gradient(90deg, var(--secondary-glow), var(--tertiary-glow))' }} />
+        </div>
+      </div>
+
+      {/* Resonance Badges Showcase */}
+      <div className="glass-panel">
+        <h3>Unlocked Resonance Badges</h3>
+        <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem', marginBottom: '15px' }}>
+          Your acoustic milestones unlocked across your vocal journey
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px' }}>
+          {[
+            { id: 'first_align', title: 'First Frequency Alignment', icon: '⚡', desc: 'Successfully synchronized voice frequencies for the first time.', earned: recordings.length > 0 },
+            { id: 'ch1', title: 'Cosmic Breath Initiate', icon: '🌬️', desc: 'Sustained a steady 432 Hz tone continuously for 6.0 seconds.', earned: userData?.completedChallenges?.includes('ch1') },
+            { id: 'ch2', title: 'Quantum Vocalist', icon: '💎', desc: 'Achieved a pitch stability score of 90% or higher.', earned: userData?.completedChallenges?.includes('ch2') },
+            { id: 'solfeggio', title: 'Solfeggio Adept', icon: '🔱', desc: 'Synthesized performance audio in sync with target Solfeggio frequencies.', earned: recordings.some(r => r.selectedFreq) }
+          ].map(badge => (
+            <div 
+              key={badge.id} 
+              style={{ 
+                background: badge.earned ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.2)', 
+                padding: '12px', 
+                borderRadius: '10px', 
+                border: badge.earned ? '1px solid var(--primary-glow)' : '1px dashed rgba(255,255,255,0.08)',
+                display: 'flex', 
+                gap: '12px', 
+                alignItems: 'center',
+                opacity: badge.earned ? 1 : 0.45,
+                boxShadow: badge.earned ? '0 0 10px rgba(0, 242, 255, 0.15)' : 'none',
+                transition: 'all 0.3s ease'
+              }}
+            >
+              <span style={{ fontSize: '1.8rem', filter: badge.earned ? 'none' : 'grayscale(100%)' }}>{badge.icon}</span>
+              <div style={{ textAlign: 'left' }}>
+                <strong style={{ fontSize: '0.85rem', color: badge.earned ? '#fff' : 'var(--text-dim)' }}>{badge.title}</strong>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', display: 'block', lineHeight: '1.2', marginTop: '3px' }}>{badge.desc}</span>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

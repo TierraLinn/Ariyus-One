@@ -1,7 +1,35 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import VoiceSignatureCard from '../components/VoiceSignatureCard';
 
+const COSMIC_ADS = [
+  {
+    title: "✨ QUANTUM BIO-TUNING HEADSET",
+    desc: "Harmonize brainwaves at 528Hz instantly. Order today for 15% off.",
+    icon: "🎧"
+  },
+  {
+    title: "🔮 SOLFEGGIO NATURAL CRYSTALS",
+    desc: "Charged crystals curated for chakra resonance. Connect to your source.",
+    icon: "💎"
+  },
+  {
+    title: "🌌 STARSEED MEDITATION APP",
+    desc: "Guided astral projection travels & sleep tuning. Install from portal.",
+    icon: "🚀"
+  }
+];
+
 const HomeNexus = ({ userData, communityFeed, navigate, activeChallenge, handleAcceptChallenge }) => {
+  const [activeAdIdx, setActiveAdIdx] = useState(0);
+
+  useEffect(() => {
+    if (!userData || userData.tier !== 'Free') return;
+    const timer = setInterval(() => {
+      setActiveAdIdx(prev => (prev + 1) % COSMIC_ADS.length);
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [userData]);
+
   if (!userData) return null;
 
   const {
@@ -51,12 +79,37 @@ const HomeNexus = ({ userData, communityFeed, navigate, activeChallenge, handleA
           </div>
         </div>
 
-        {/* Ad Placeholder for Free Tier */}
+        {/* Ad Placeholder for Free Tier with rotation carousel */}
         {tier === 'Free' && (
-          <div className="glass-panel ad-placeholder" style={{ margin: '20px 0 0 0', cursor: 'pointer' }} onClick={() => navigate('Upgrade')}>
-            <p style={{ color: 'var(--secondary-glow)', margin: 0, fontSize: '0.9rem', fontWeight: 'bold' }}>
-              [ COSMIC SPONSOR AD ] - Upgrade to Ariyus Plus to silence all commercial interruptions.
-            </p>
+          <div 
+            className="glass-panel ad-placeholder" 
+            style={{ 
+              margin: '20px 0 0 0', 
+              cursor: 'pointer',
+              borderColor: 'var(--secondary-glow)',
+              background: 'rgba(255, 0, 193, 0.05)',
+              boxShadow: '0 0 10px rgba(255, 0, 193, 0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '15px',
+              padding: '12px 20px',
+              transition: 'all 0.5s ease',
+              textAlign: 'left'
+            }} 
+            onClick={() => navigate('Upgrade')}
+          >
+            <span style={{ fontSize: '1.6rem' }}>{COSMIC_ADS[activeAdIdx].icon}</span>
+            <div style={{ textAlign: 'left' }}>
+              <strong style={{ color: 'var(--secondary-glow)', fontSize: '0.85rem', display: 'block', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                {COSMIC_ADS[activeAdIdx].title}
+              </strong>
+              <span style={{ color: 'var(--text-dim)', fontSize: '0.78rem', marginTop: '3px', display: 'block', lineHeight: '1.3' }}>
+                {COSMIC_ADS[activeAdIdx].desc}
+              </span>
+            </div>
+            <div style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--secondary-glow)', border: '1px solid var(--secondary-glow)', borderRadius: '4px', padding: '2px 6px', fontWeight: 'bold' }}>
+              AD
+            </div>
           </div>
         )}
       </div>

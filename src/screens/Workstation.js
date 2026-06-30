@@ -310,7 +310,11 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
 
   // --- Instrumentals Library States ---
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
-  const [librarySongs, setLibrarySongs] = useState([]);
+  const [librarySongs, setLibrarySongs] = useState([
+    { id: 'm1', title: 'Cosmic Resonance', artist: 'Solfeggio 528Hz Guide', audioUrl: 'https://upload.wikimedia.org/wikipedia/commons/5/52/Mozart_-_Clarinet_Quintet_in_A_major%2C_K._581_-_II._Larghetto.mp3' },
+    { id: 'm2', title: 'Solar Plexus Alignment', artist: 'Theta Wave 432Hz Beat', audioUrl: 'https://upload.wikimedia.org/wikipedia/commons/1/1a/Suite_1_-_Prelude_in_G_major.mp3' },
+    { id: 'm3', title: 'Throat Chakra Cleansing', artist: '741Hz Ambient Drone', audioUrl: 'https://upload.wikimedia.org/wikipedia/commons/8/87/Beethoven_-_Symphony_No._5_in_C_minor%2C_Op._67_-_I._Allegro_con_brio.mp3' }
+  ]);
   const [targetTrackId, setTargetTrackId] = useState(null);
   const [libraryTab, setLibraryTab] = useState('cover'); // 'cover' or 'synth'
 
@@ -466,14 +470,11 @@ const WorkstationScreen = ({ userData, navigate, duetPayload }) => {
         querySnapshot.forEach((doc) => {
           songs.push({ id: doc.id, ...doc.data() });
         });
-        setLibrarySongs(songs);
+        if (songs.length > 0) {
+          setLibrarySongs(songs);
+        }
       } catch (err) {
-        console.warn("Could not load songs database library, using offline mock instrumentals:", err);
-        setLibrarySongs([
-          { id: 'm1', title: 'Cosmic Resonance', artist: 'Solfeggio 528Hz Guide', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' },
-          { id: 'm2', title: 'Solar Plexus Alignment', artist: 'Theta Wave 432Hz Beat', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3' },
-          { id: 'm3', title: 'Throat Chakra Cleansing', artist: '741Hz Ambient Drone', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3' }
-        ]);
+        console.warn("Could not load songs database library:", err);
       }
     };
     loadSongs();

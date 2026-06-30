@@ -157,10 +157,16 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
   // Nodes: 'voice', 'track', 'solfeggio'
   // x: [0, 1] maps to Left -> Right panning (-1.0 to 1.0)
   // y: [0, 1] maps to Back -> Front depth/volume (0.0 to 1.0)
-  const [soundstage, setSoundstage] = useState({
-    voice: { x: 0.5, y: 0.7, label: 'Voice (Vocals)', color: '#00f2ff' },
-    track: { x: 0.5, y: 0.3, label: 'Track (Music)', color: '#7000ff' },
-    solfeggio: { x: 0.5, y: 0.9, label: 'Solfeggio Hum', color: '#ff00c1' }
+  const [soundstage, setSoundstage] = useState(() => {
+    const base = {
+      voice: { x: 0.6, y: 0.7, label: 'My Voice', color: '#00f2ff' },
+      track: { x: 0.5, y: 0.3, label: 'Track (Music)', color: '#7000ff' },
+      solfeggio: { x: 0.5, y: 0.9, label: 'Solfeggio Hum', color: '#ff00c1' }
+    };
+    if (currentRecording?.duetPartner) {
+      base.partner = { x: 0.4, y: 0.7, label: 'Partner Voice', color: '#00ff87' };
+    }
+    return base;
   });
   const [draggingNode, setDraggingNode] = useState(null);
 
@@ -168,6 +174,7 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
   const audioCtxRef = useRef(null);
   const voiceSourceRef = useRef(null);
   const backingSourceRef = useRef(null);
+  const duetSourceRef = useRef(null);
   
   // DSP Gain & Panner Node Refs
   const voiceGainRef = useRef(null);
@@ -176,6 +183,8 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
   const backingPannerRef = useRef(null);
   const solfeggioGainRef = useRef(null);
   const solfeggioPannerRef = useRef(null);
+  const duetGainRef = useRef(null);
+  const duetPannerRef = useRef(null);
   
   // DSP FX Nodes Refs
   const ringModRef = useRef(null);
@@ -189,10 +198,9 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
   const chorusLfoRef = useRef(null);
   const highpassFilterRef = useRef(null);
   const lowselfFilterRef = useRef(null);
+  const voicePeakingFilterRef = useRef(null);
 
   // Oscillators
-  const carrierOscLeftRef = useRef(null);
-  const carrierOscRightRef = useRef(null);
   const ringModOscRef = useRef(null);
 
   // Pitch Shifter nodes
@@ -208,10 +216,12 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
   // Analysers
   const voiceAnalyserRef = useRef(null);
   const backingAnalyserRef = useRef(null);
+  const duetAnalyserRef = useRef(null);
 
   // Audio Players and Canvas Refs
   const voiceAudioElRef = useRef(null);
   const backingAudioElRef = useRef(null);
+  const duetAudioElRef = useRef(null);
   const visualizerCanvasRef = useRef(null);
   const soundstageCanvasRef = useRef(null);
   const chakraCanvasRef = useRef(null);
@@ -239,13 +249,15 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
   ];
 
   const intentions = {
-    396: 'UT - Release Guilt, Fear & Sub-conscious Blocks',
-    417: 'RE - Clear Traumatic Patterns & Support Change',
-    432: 'Natural Harmonic Tuning (Organic Cosmic Sync)',
-    528: 'MI - DNA Vitality Repair & Transformation Miracle',
-    639: 'FA - Harmonize Relationship Bonds & Coherence',
-    741: 'SOL - Clear Self-Expression & Cleanse Intuition',
-    852: 'LA - Sync Spiritual Alignment & Cosmic Order'
+    396: 'UT - Release Guilt, Fear & Sub-conscious Blocks (Root Chakra Grounding)',
+    417: 'RE - Clear Traumatic Patterns & Support Change (Sacral Chakra Fluidity)',
+    432: 'Natural Harmonic Tuning (Earth Heartbeat Cosmic Sync)',
+    444: 'Key of David (Physical Vitality & Heart Muscle Coherence)',
+    528: 'MI - DNA Vitality Repair & Cell Renewal Miracle (Solar Plexus Alignment)',
+    639: 'FA - Harmonize Relationship Bonds & Empathy (Heart Chakra Coherence)',
+    741: 'SOL - Clear Self-Expression & Cleanse Intuition (Throat Chakra Purification)',
+    852: 'LA - Sync Spiritual Alignment & Cosmic Order (Third Eye Awakening)',
+    963: 'SI - Pineal Activation & Universal Source Alignment (Crown Connection)'
   };
 
   const effectPresets = [
@@ -335,10 +347,12 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       case 396: return 396 / 392.00;
       case 417: return 417 / 415.30;
       case 432: return 432 / 440.00;
+      case 444: return 444 / 440.00;
       case 528: return 528 / 523.25;
       case 639: return 639 / 659.25;
       case 741: return 741 / 739.99;
       case 852: return 852 / 880.00;
+      case 963: return 963 / 987.77;
       default: return 1.0;
     }
   };
@@ -460,6 +474,9 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       // Source Nodes
       voiceSourceRef.current = ctx.createMediaElementSource(voiceAudioElRef.current);
       backingSourceRef.current = ctx.createMediaElementSource(backingAudioElRef.current);
+      if (currentRecording?.duetPartner && duetAudioElRef.current) {
+        duetSourceRef.current = ctx.createMediaElementSource(duetAudioElRef.current);
+      }
 
       // Mixer Gain & Spatial Panner Nodes
       voiceGainRef.current = ctx.createGain();
@@ -468,6 +485,8 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       backingPannerRef.current = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
       solfeggioGainRef.current = ctx.createGain();
       solfeggioPannerRef.current = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+      duetGainRef.current = ctx.createGain();
+      duetPannerRef.current = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
 
       highHarmonyGainRef.current = ctx.createGain();
       highHarmonyPannerRef.current = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
@@ -551,12 +570,18 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       lowselfFilterRef.current.frequency.setValueAtTime(160, ctx.currentTime);
       lowselfFilterRef.current.gain.setValueAtTime(activeEffects.includes('Hyper Bass') ? 8.0 : 0.0, ctx.currentTime);
 
-      // 8. Backing Peaking Filter (Acoustic Coupling)
+      // 8. Solfeggio Peaking Filters (Physical frequency resonance)
+      voicePeakingFilterRef.current = ctx.createBiquadFilter();
+      voicePeakingFilterRef.current.type = 'peaking';
+      voicePeakingFilterRef.current.Q.setValueAtTime(6.0, ctx.currentTime);
+      voicePeakingFilterRef.current.frequency.setValueAtTime(selectedFreq, ctx.currentTime);
+      voicePeakingFilterRef.current.gain.setValueAtTime((freqVol / 100) * 15.0, ctx.currentTime);
+
       backingPeakingFilterRef.current = ctx.createBiquadFilter();
       backingPeakingFilterRef.current.type = 'peaking';
-      backingPeakingFilterRef.current.Q.setValueAtTime(8.0, ctx.currentTime);
+      backingPeakingFilterRef.current.Q.setValueAtTime(6.0, ctx.currentTime);
       backingPeakingFilterRef.current.frequency.setValueAtTime(selectedFreq, ctx.currentTime);
-      backingPeakingFilterRef.current.gain.setValueAtTime(activeEffects.includes('Acoustic Coupling') ? 15.0 : 0.0, ctx.currentTime);
+      backingPeakingFilterRef.current.gain.setValueAtTime((freqVol / 100) * 15.0, ctx.currentTime);
 
       // Pitch-preserving pitch shifter initialization
       const pitchRatio = isDryActive ? 1.0 : getPlaybackRateForFrequency(selectedFreq);
@@ -573,10 +598,11 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       // --- Vocal routing connections ---
       voiceSourceRef.current.connect(voicePitchShifterRef.current.input);
       voicePitchShifterRef.current.output.connect(highpassFilterRef.current);
+      highpassFilterRef.current.connect(voicePeakingFilterRef.current);
       
       // Route vocal to backing harmony streams
-      highpassFilterRef.current.connect(highHarmonyPitchShifterRef.current.input);
-      highpassFilterRef.current.connect(lowHarmonyPitchShifterRef.current.input);
+      voicePeakingFilterRef.current.connect(highHarmonyPitchShifterRef.current.input);
+      voicePeakingFilterRef.current.connect(lowHarmonyPitchShifterRef.current.input);
 
       highHarmonyPitchShifterRef.current.output.connect(highHarmonyGainRef.current);
       lowHarmonyPitchShifterRef.current.output.connect(lowHarmonyGainRef.current);
@@ -596,12 +622,12 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       finalLowHarmonyNode.connect(voiceAnalyserRef.current);
       
       // Splits for FX
-      highpassFilterRef.current.connect(waveshaperNodeRef.current);
-      highpassFilterRef.current.connect(reverbConvolverRef.current);
-      highpassFilterRef.current.connect(chorusDelayRef.current);
+      voicePeakingFilterRef.current.connect(waveshaperNodeRef.current);
+      voicePeakingFilterRef.current.connect(reverbConvolverRef.current);
+      voicePeakingFilterRef.current.connect(chorusDelayRef.current);
 
       // Connect dry/wet paths
-      highpassFilterRef.current.connect(ringModRef.current); // dry path to ringMod
+      voicePeakingFilterRef.current.connect(ringModRef.current); // dry path to ringMod
       wsWetGain.connect(ringModRef.current);
       reverbWetGain.connect(ringModRef.current);
       chorusWetGain.connect(ringModRef.current);
@@ -632,32 +658,21 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       finalBackingNode.connect(backingAnalyserRef.current);
       backingAnalyserRef.current.connect(ctx.destination);
 
-      // --- Solfeggio carrier oscillators routing ---
-      const splitter = ctx.createChannelMerger(2);
-      carrierOscLeftRef.current = ctx.createOscillator();
-      carrierOscLeftRef.current.type = 'sine';
-      carrierOscLeftRef.current.frequency.setValueAtTime(selectedFreq, ctx.currentTime);
-
-      carrierOscRightRef.current = ctx.createOscillator();
-      carrierOscRightRef.current.type = 'sine';
-      const binauralOffset = activeEffects.includes('Binaural Beating') ? 8 : 0;
-      carrierOscRightRef.current.frequency.setValueAtTime(selectedFreq + binauralOffset, ctx.currentTime);
-
-      carrierOscLeftRef.current.connect(splitter, 0, 0);
-      carrierOscRightRef.current.connect(splitter, 0, 1);
-      
-      splitter.connect(solfeggioGainRef.current);
-      
-      let finalSolfeggioNode = solfeggioGainRef.current;
-      if (solfeggioPannerRef.current) {
-        solfeggioGainRef.current.connect(solfeggioPannerRef.current);
-        finalSolfeggioNode = solfeggioPannerRef.current;
+      // --- Duet partner routing connections ---
+      if (duetSourceRef.current) {
+        duetSourceRef.current.connect(duetGainRef.current);
+        let finalDuetNode = duetGainRef.current;
+        if (duetPannerRef.current) {
+          duetGainRef.current.connect(duetPannerRef.current);
+          finalDuetNode = duetPannerRef.current;
+        }
+        finalDuetNode.connect(duetAnalyserRef.current);
+        duetAnalyserRef.current.connect(ctx.destination);
       }
-      finalSolfeggioNode.connect(ctx.destination);
 
-      carrierOscLeftRef.current.start();
-      carrierOscRightRef.current.start();
-
+      // --- Solfeggio carrier oscillators routing (Muted raw carrier tone output as requested) ---
+      // Raw carrier oscillators are bypassed to avoid literal beeps. The Solfeggio frequency
+      // is instead directly integrated via the dual peaking filters on both vocal & music tracks.
     } catch (e) {
       console.warn("Failed to create advanced Web Audio ARC-5 graph:", e);
     }
@@ -758,6 +773,16 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
       backingGainRef.current.gain.setValueAtTime(vol, ctx.currentTime);
     }
 
+    // PARTNER: x maps to Panning [-1, 1], y maps to Volume [0, 1]
+    if (duetPannerRef.current && soundstage.partner) {
+      const pan = (soundstage.partner.x * 2) - 1;
+      duetPannerRef.current.pan.setValueAtTime(pan, ctx.currentTime);
+    }
+    if (duetGainRef.current && soundstage.partner) {
+      const vol = isDryActive ? 0.0 : soundstage.partner.y * (voiceVol / 100);
+      duetGainRef.current.gain.setValueAtTime(vol, ctx.currentTime);
+    }
+
     // SOLFEGGIO: x maps to Panning [-1, 1], y maps to Volume [0, 1] (if not orbiting)
     if (!activeEffects.includes('Binaural Beating')) {
       if (solfeggioPannerRef.current) {
@@ -768,6 +793,17 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
     if (solfeggioGainRef.current) {
       const vol = isDryActive ? 0.0 : soundstage.solfeggio.y * ((freqVol / 100) * 0.45);
       solfeggioGainRef.current.gain.setValueAtTime(vol, ctx.currentTime);
+    }
+
+    if (voicePeakingFilterRef.current) {
+      const gainVal = isDryActive ? 0.0 : (freqVol / 100) * 15.0;
+      voicePeakingFilterRef.current.gain.setValueAtTime(gainVal, ctx.currentTime);
+      voicePeakingFilterRef.current.frequency.setValueAtTime(selectedFreq, ctx.currentTime);
+    }
+    if (backingPeakingFilterRef.current) {
+      const gainVal = isDryActive ? 0.0 : (freqVol / 100) * 15.0;
+      backingPeakingFilterRef.current.gain.setValueAtTime(gainVal, ctx.currentTime);
+      backingPeakingFilterRef.current.frequency.setValueAtTime(selectedFreq, ctx.currentTime);
     }
 
     // Harmony volume gains
@@ -1227,7 +1263,7 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [isPlaying, soundstage, selectedFreq, activeEffects, convergenceRatio, chakras]);
+  }, [isPlaying, soundstage, selectedFreq, activeEffects, convergenceRatio, chakras, isAIHarmonized]);
 
   // Soundstage mouse dragging handlers
   const handleSoundstageDown = (e) => {
@@ -1291,20 +1327,32 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
     if (isPlaying) {
       voice.pause();
       backing.pause();
+      if (duetAudioElRef.current) duetAudioElRef.current.pause();
       stopTones();
       setIsPlaying(false);
     } else {
       startTones();
       backing.currentTime = voice.currentTime;
+      if (duetAudioElRef.current) {
+        duetAudioElRef.current.currentTime = voice.currentTime;
+      }
 
       // Keep original speed/tempo constant - retuning is done via Web Audio pitch-preserving nodes
       voice.playbackRate = 1.0;
       backing.playbackRate = 1.0;
+      if (duetAudioElRef.current) {
+        duetAudioElRef.current.playbackRate = 1.0;
+      }
 
-      Promise.all([
+      const playPromises = [
         voice.play(),
         backing.play()
-      ]).then(() => {
+      ];
+      if (duetAudioElRef.current) {
+        playPromises.push(duetAudioElRef.current.play());
+      }
+
+      Promise.all(playPromises).then(() => {
         setIsPlaying(true);
       }).catch(err => {
         console.error("Audio playback sync fail:", err);
@@ -1316,6 +1364,7 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
     stopTones();
     if (voiceAudioElRef.current) voiceAudioElRef.current.pause();
     if (backingAudioElRef.current) backingAudioElRef.current.pause();
+    if (duetAudioElRef.current) duetAudioElRef.current.pause();
     setIsPlaying(false);
 
     if (!currentRecording || !currentRecording.playbackUrl) {
@@ -1712,6 +1761,56 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
         </div>
       )}
 
+      {/* Performance Grade & Badge Showcase Grid */}
+      {currentRecording?.grade && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+          {/* Grade Card */}
+          <div className="glass-panel" style={{ 
+            margin: 0, 
+            textAlign: 'center', 
+            borderColor: currentRecording.grade.color,
+            boxShadow: `0 0 15px ${currentRecording.grade.color}44`
+          }}>
+            <h4 style={{ margin: '0 0 8px 0', textTransform: 'uppercase', color: 'var(--text-dim)', fontSize: '0.8rem', letterSpacing: '1px' }}>Vocal Alignment Grade</h4>
+            <div style={{ 
+              fontSize: '4rem', 
+              fontWeight: '900', 
+              color: currentRecording.grade.color, 
+              textShadow: `0 0 20px ${currentRecording.grade.color}`,
+              margin: '10px 0',
+              fontFamily: '"Orbitron", sans-serif'
+            }}>
+              {currentRecording.grade.letter}
+            </div>
+            <p style={{ margin: 0, fontSize: '0.85rem', color: '#fff' }}>
+              Resonance Accuracy: <strong>{currentRecording.grade.score}%</strong>
+            </p>
+          </div>
+
+          {/* Badges Earned Card */}
+          <div className="glass-panel" style={{ margin: 0, borderColor: 'var(--glass-border)' }}>
+            <h4 style={{ margin: '0 0 12px 0', textTransform: 'uppercase', color: 'var(--text-dim)', fontSize: '0.8rem', letterSpacing: '1px' }}>Resonance Badges Earned</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', height: '115px', overflowY: 'auto' }}>
+              {currentRecording.badgesEarned && currentRecording.badgesEarned.length > 0 ? (
+                currentRecording.badgesEarned.map(badge => (
+                  <div key={badge.id} style={{ display: 'flex', gap: '10px', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '8px 12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                    <span style={{ fontSize: '1.4rem' }}>{badge.icon}</span>
+                    <div style={{ textAlign: 'left' }}>
+                      <strong style={{ fontSize: '0.82rem', color: '#fff', display: 'block' }}>{badge.title}</strong>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', display: 'block', lineHeight: '1.2', marginTop: '2px' }}>{badge.desc}</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div style={{ color: 'var(--text-dim)', fontSize: '0.82rem', display: 'grid', placeItems: 'center', height: '100%' }}>
+                  No badges unlocked this performance. Keep practicing!
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Audio Playback Controls */}
       <div className="glass-panel" style={{ textAlign: 'center', borderColor: 'var(--primary-glow)' }}>
         <h3>Real-time Frequency Converter</h3>
@@ -1721,14 +1820,27 @@ const ResultsChamber = ({ currentRecording, saveAndShare, navigate, user, userDa
             <audio 
               ref={voiceAudioElRef} 
               src={currentRecording.playbackUrl} 
-              onEnded={() => { setIsPlaying(false); stopTones(); }}
+              onEnded={() => { setIsPlaying(false); stopTones(); duetAudioElRef.current?.pause(); }}
               style={{ display: 'none' }}
+              preload="auto"
+              crossOrigin="anonymous"
             />
             <audio 
               ref={backingAudioElRef} 
-              src={currentRecording?.selectedSong?.audioUrl || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'} 
+              src={currentRecording?.selectedSong?.audioUrl || 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Happy%20Life.mp3'} 
               style={{ display: 'none' }} 
+              preload="auto"
+              crossOrigin="anonymous"
             />
+            {currentRecording?.duetPartner && (
+              <audio 
+                ref={duetAudioElRef} 
+                src={currentRecording.duetPartner.playbackUrl} 
+                style={{ display: 'none' }} 
+                preload="auto"
+                crossOrigin="anonymous"
+              />
+            )}
           </>
         ) : (
           <p style={{ color: 'var(--secondary-glow)' }}>No active audio captured.</p>

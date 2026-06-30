@@ -45,88 +45,95 @@ Ariyus-One runs entirely client-side with cloud-synchronized user accounts. This
 
 ---
 
-## 4. Comprehensive Feature Index
+## 4. Comprehensive Layer-by-Layer Architecture & Feature Index
 
-### Feature Node 1: The Home Nexus
-The command center of the Ariyus-One experience, displaying real-time profile states and tracking progression.
-- **Ariyus Journey Level Tracker:** Tracks user progression using a logarithmic level system (e.g., *Seeker*, *Resonator*, *Harmonizer*, *Alchemist*, *Luminary*) fueled by XP achievements.
-- **Active User Membership Badging:** Displays subscription tiers (*Free*, *Ariyus Pro*, *Creator*) with dynamic CSS glow rings.
-- **Dynamic CSS Particle Background:** Renders 40 floating cosmic micro-particles moving via random Bezier vectors, mirroring organic cellular patterns.
-- **Cosmic Sponsor Terminal:** Contextual banner ads matching the glassmorphic space theme (gated for Free users).
+Ariyus-One is architected in distinct layers, scaling from a zero-barrier, interactive web-karaoke console up to a professional-grade multi-track DAW recording workstation for paid creators.
 
-### Feature Node 2: Alignment Challenges Engine
-A gamified engine that hooks into the studio and rewards bio-resonance training.
-- **Cosmic Breath Challenge:** Demands that the vocalist hold a steady, organic 432 Hz frequency (+/- 5 Hz) continuously for 6.0 seconds. High-precision microphone trackers verify the tone in real-time.
-- **Harmonic Alignment Challenge:** Unlocks upon achieving an A+ Pitch Stability rating (>=90%) on a finalized performance track.
-- **XP Reward Sync:** Syncs completion statuses immediately to Firestore and awards +100 XP / +150 XP.
+### LAYER 1: The Foundation Karaoke & Vocal Sing Console (Free Tier)
+This layer provides an advanced, high-fidelity, and gamified karaoke vocal experience designed for global accessibility, real-time bio-resonance feedback, video recording, and social collaboration. It matches and exceeds the functionality of mainstream karaoke platforms (such as Smule and StarMaker) by layering biological telemetry on top of traditional social karaoke.
 
-### Feature Node 3: The Song Library (Sing Console)
-The catalogue of target-frequency backing tracks.
-- **Solfeggio Categorization:** Tracks are filtered by target frequencies:
-  - **396 Hz (Liberation):** UT key for releasing fear and sub-conscious blockages.
-  - **417 Hz (Change):** RE key for clearing traumatic patterns.
-  - **432 Hz (Cosmic Sync):** Natural harmonic organic tuning.
-  - **528 Hz (Transformation):** MI key for DNA vitality and repair.
-  - **639 Hz (Harmonize):** FA key for relationship and interpersonal coherence.
-  - **741 Hz (Awakening):** SOL key for clearing intuition and expression.
-  - **852 Hz (Spiritual Order):** LA key for cosmic order alignment.
-- **Freestyle Resonance Mode:** Enables recording over a blank cosmic hum without backing instrumentation, allowing for meditation practice.
+*   **Feature Node 1: The Home Nexus**
+    *   **Ariyus Journey Level Tracker:** Tracks user progression using a logarithmic level system (e.g., *Seeker*, *Resonator*, *Harmonizer*, *Alchemist*, *Luminary*) fueled by XP achievements.
+    *   **Active User Membership Badging:** Displays subscription tiers (*Free*, *Ariyus Pro*, *Creator*) with dynamic CSS glow rings.
+    *   **Dynamic CSS Particle Background:** Renders 40 floating cosmic micro-particles moving via random Bezier vectors, mirroring organic cellular patterns.
+    *   **Cosmic Sponsor Terminal:** Contextual space-themed ads (gated for Free users).
+*   **Feature Node 2: The Song Library & Global Licensed Catalog**
+    *   **Scrolling Lyrics Prompt HUD:** Features a real-time, syllable-synchronized scrolling lyrics prompter that tracks the backing music file, allowing singers to stay in perfect rhythmic alignment.
+    *   **Solfeggio Categorization:** Filter catalog files by target therapeutic frequencies (396 Hz, 417 Hz, 432 Hz, 444 Hz, 528 Hz, 639 Hz, 741 Hz, 852 Hz, 963 Hz).
+    *   **Multi-Genre/Artist Licensed Repository:** A structured catalog built to host licensing contracts for mainstream hits and cover instrumentals, supporting user searches by genre, popularity, and key.
+    *   **Freestyle Meditation Mode:** Allows recording vocal tracks over a blank cosmic sine wave hum without backing tracks.
+*   **Feature Node 3: High-Precision Recording Studio & Live Video Capture**
+    *   **Dual Audio-Video Capture Interface:** Utilizes the WebRTC MediaStream API to capture user vocals simultaneously with high-definition camera video feeds.
+    *   **Autocorrelation Pitch Tracker:** Runs a mathematical time-domain autocorrelation function 10 times per second to isolate the fundamental frequency of the user's voice in Hertz, mapping it in real-time against backing guide tracks.
+    *   **Vocal Resonance Frequency Hertz Output Mode:** A master output mode allowing users to render and compile their vocal recordings shifted into specific Solfeggio or natural Hertz values (e.g. 432 Hz cosmic tuning, 444 Hz Key of David, 528 Hz cell miracle, or 963 Hz Pineal activation). The target frequency is physically integrated directly into the compiled voice & music tracks using dual peaking resonance filters (rather than raw sine-wave oscillator hums), aligning with the natural biological response points.
+    *   **Mainstream Karaoke Studio Filters:**
+        *   *Studio Filter:* Tube saturation and low-end clarity processing for a crisp, presence-forward tone (identical to professional studio microphones).
+        *   *Smule-style Reverb:* Simulates concert hall (Galactic) and recording room space acoustics.
+        *   *Echo/Delay:* Dual-tap delay offsets with configurable feedback volume.
+        *   *Custom Tuning:* Allows singers to adjust the dry/wet gain ratios of all active inserts.
+    *   **Microphone Sandbox Fallback:** Includes a frequency synthesis sandbox simulator that simulates real-time pitch tracking for offline trials or when system microphone permissions are denied.
+*   **Feature Node 4: Sacred Geometry & Mandala Visualizer**
+    *   **Dynamic SVG/Canvas Rendering Matrix:** When the user sings, the app translates audio amplitude, frequency stability, and harmonic balance into voice-reactive, geometrical constructs in real-time.
+    *   **Sacred Symmetry Constructs:** Generates complex patterns like the *Flower of Life*, *Sri Yantra*, and *Metatron's Cube* overlayed on the video frame.
+    *   **Acoustic Shape-Shifting:**
+        *   *Pitch Stability:* Controls the number of symmetrical sectors of the mandala (a stable pitch creates a highly symmetric, circular mandala).
+        *   *Volume Amplitude:* Governs the diameter and scale expansion of the sacred geometric shapes.
+        *   *Harmonics-to-Noise Ratio (HNR):* Alters the thickness, color gradient, and neon bloom intensity of the outer rings.
+*   **Feature Node 5: Evolving Grading & Badge Earning System**
+    *   **Precision Bio-Resonance Grading Algorithm:** Automatically grades each performance based on three metrics: Pitch Stability (Jitter deviation), Volume Consistency (Shimmer variance), and Target Scale Alignment (sustain of the target frequency).
+    *   **Logarithmic Leveling Progression:** Grants Experience Points (XP) for performance milestones (+100 XP for challenges, +80 XP for shared recordings).
+    *   **Evolving Badge Nodes:** Awards collectible and visible badges on user profiles:
+        *   *Cosmic Breath Initiate:* Awarded for holding a steady 432 Hz tone (+/- 5 Hz) continuously for 6.0 seconds.
+        *   *Quantum Vocalist:* Awarded for achieving an A+ Pitch Stability grade (>= 90%) on any song.
+        *   *Solfeggio Adept:* Awarded for completing a recording in all 7 Solfeggio frequency categories.
+*   **Feature Node 6: Cloud Performance Archive, Vocal Chat & Social Feed**
+    *   **Secure Multi-Media Cloud Upload:** Encodes finalized video and audio performance layers, uploading the files to Firebase Storage.
+    *   **Firestore Activity Feed:** Syncs metadata (user name, score, duration, custom voice signature, and playback URL) to a global feed.
+    *   **Duets, Solos, and Contests Lobby:** Enables users to invite friends to join asynchronous duet recordings (mixing their vocal tracks), start solos, or enter weekly global resonance contests with leaderboard rank tracking.
+    *   **Vocal Chat Lobbies (Real-time Voice Rooms):** Spatial real-time audio rooms where users can join via microphone to chat, warm up, collaborate on song arrangements, and vote on contest entries live.
+    *   **Voice Comments:** Allows listeners to record and post voice comments directly onto shared community performances.
+*   **Feature Node 7: Digital Voice Signature**
+    *   **Vocal Biomarkers Extraction:** Analyzes vocal telemetry during recording to create a unique mathematical Voice Signature:
+        *   *Jitter:* Micro-fluctuations in pitch stability, mapped to the *Third Eye Chakra (Ajna)*.
+        *   *HNR:* Vocal clarity vs breathy noise, mapped to the *Throat Chakra (Vishuddha)*.
+        *   *Shimmer:* Volume micro-variations, mapped to the *Heart Chakra (Anahata)*.
+        *   *Spectral Centroid:* Audio spectrum center of mass, mapped to the *Root Chakra (Muladhara)*.
+    *   **Vector Card SVG Export:** Compiles the voice signature metadata, chakra alignments, biomarker stats, and user level into a print-ready vector certificate for local download.
 
-### Feature Node 4: High-Precision Recording Studio
-The core interface where live vocals are captured, analyzed, and calibrated.
-- **Autocorrelation Pitch Tracker:** Runs a mathematical time-domain autocorrelation function 10 times per second to isolate the fundamental frequency of the user's voice in Hertz.
-- **Cosmic Breath HUD overlay:** Renders a real-time glowing gold progress bar tracking the user's progress toward the 6.0-second sustain limit.
-- **Voice-Reactive Visualizer:** Draws high-refresh frequency domain waveform peaks inside an HTML5 canvas.
-- **Off-grid Sandbox Simulator:** Includes fallback frequency synthesis that simulates pitch tracking for testing when microphone permissions are denied or in offline demo environments.
+---
 
-### Feature Node 5: The ARC-5 DSP Effects Rack
-A proprietary mixing deck that applies real-time acoustic modifications to vocals and backing tracks.
-- **Ring Modulator:** Locks the user's voice to the Solfeggio carrier wave sidebands, generating metallic harmonics.
-- **Comb Resonator:** Adds a feedback delay loop tuned precisely to the inverse of the Solfeggio hertz key, physically reinforcing the target frequency.
-- **Acoustic Coupling:** A dynamic peaking filter that shifts the backing track's frequency range in real-time to match the singer's vocal pitch.
-- **Binaural Beating:** Generates a twin-oscillator Solfeggio carrier wave with an 8 Hz offset between the left and right channels to entrain theta brainwaves.
-- **Galactic Reverb:** An algorithmic room convolver that passes dry vocals through a randomized soundscape decay buffer (2.5s duration, 2.0 decay exponent).
-- **Warm Harmonics:** A tube waveshaper distortion curve that injects warm, even-order overtones.
-- **Cyber Chorus:** Modulates a short delay line via a 1.5 Hz LFO to double the presence of the vocals.
-- **Vocal Clarity Filter:** A highpass biquad filter cutting out low-frequency microphone mud below 120 Hz.
-- **Hyper Bass Boost:** A low-shelf filter adding a warm +8.0 dB boost to the backing track's low frequencies.
+### LAYER 2: The Professional Multi-Track DAW Workstation (Pro & Creator Tiers)
+Designed for paid subscribers, this layer unlocks a fully featured web-based DAW mirroring the workflows, capabilities, and synthesis engines of legendary industry software.
 
-### Feature Node 6: 3D Spatial Soundstage
-An interactive, tactile coordinates panel mapping spatial depth.
-- **2D Node Grid Mapping:** Drag-and-drop nodes represent the *Voice*, *Backing Track*, and *Solfeggio Hum*.
-- **Left-to-Right Panning:** Controls the Web Audio StereoPannerNode's panning factor (-1.0 to 1.0) along the X-axis.
-- **Front-to-Back Depth:** Adjusts the gain coefficients along the Y-axis, simulating relative distance from the listener.
-- **Orbital Binaural Drift:** Swings the Solfeggio hum left and right in a sinusoidal orbit (50ms interval loop) when Binaural Beating is enabled.
+#### 1. Sony Vegas Studio Paradigm: Linear Multi-Track Timeline & Routing
+*   **Stacked Track Lanes:** Independent timeline lanes dedicated to vocals, backing instrumentals, Solfeggio carrier drones, and ambient SFX tracks.
+*   **Tactile Coordinate Canvas Editing:** A grid system where users can drag, position, and snap audio clips horizontally along the time axis to align vocal layers.
+*   **Track Mixer Headers:** Each lane features individual volume faders (0-100%) and stereo panning sliders (Left-to-Right) dynamically mapped to Web Audio gain and `StereoPannerNode` coefficients.
+*   **Mute & Solo Busses:** Allows creators to isolate particular layers or mute background components for precision monitoring.
 
-### Feature Node 7: Biofield Diagnostics & Visualizers
-Extracts biological data from the voice and maps it to ancient energy zones.
-- **Voice Biomarkers Parser:** Extracts vocal telemetry:
-  - **Jitter (Pitch Variance):** Micro-fluctuations in pitch stability.
-  - **Shimmer (Amplitude Variance):** Micro-fluctuations in volume stability.
-  - **HNR (Harmonics-to-Noise Ratio):** The ratio of pure harmonic peaks to breathy, background air noise.
-  - **Spectral Centroid:** The center of mass of the vocal spectrum, identifying tone brightness.
-- **Chakra Biofield Lightfield:** Automatically renders a translucent human silhouette on an HTML5 canvas overlayed with four glowing energy centers:
-  - **Third Eye (Ajna):** Tied to pitch stability (Jitter).
-  - **Throat (Vishuddha):** Tied to vocal clarity (HNR).
-  - **Heart (Anahata):** Tied to volume consistency (Shimmer).
-  - **Root (Muladhara):** Tied to tone depth (Spectral Centroid).
-- **Vocal Resonance Prescription:** Diagnoses vocal deficiencies and suggests customized Solfeggio codes and FX combinations to stabilize the voice.
-- **AI Voice Coach:** Analyzes biomarkers and prints step-by-step larynx, diaphragm, and resonance exercises (Pro-tier only).
+#### 2. Sony Sound Forge Paradigm: Precision Editing & Mastering Suite
+*   **Waveform Segment Editing:** Interactive waveform graphics that can be split or sliced at precise milliseconds, utilizing non-destructive segment duration manipulation.
+*   **Offline High-Fidelity Mixdown Engine:** Utilizes the Web Audio `OfflineAudioContext` running at 44.1 kHz to render all tracks, volumes, panning offsets, and insert effects into a single consolidated master buffer in the background.
+*   **Mastering Dynamics Limiter:** Includes a mastering-stage threshold brickwall compressor (-1.0 dB threshold, 12:1 compression ratio, fast attack) to maximize loudness and prevent digital clipping.
+*   **Master 3-Band Equalizer (Chest, Heart, Throat):** Integrates shelving and peaking filters (Low Shelf at 100Hz, Peaking at 1000Hz, High Shelf at 8000Hz) allowing precise adjustment of low, mid, and high vocal frequencies during mixdown.
+*   **16-Bit PCM WAV Export:** Compiles the master buffer into a raw binary WAV file structure (RIFF, fmt, data subchunks) for direct local download.
 
-### Feature Node 8: Vector SVG Card Export
-- **Aura SVG Generator:** Builds a vector certificate including the singer's vocal identity (e.g., Alto, Tenor), dominant resonance frequency, biomarker stats, chakra alignments, and a secure verification hash.
-- **Download Utility:** Triggers an automatic download of a high-resolution, scalable `.svg` image suitable for printing or sharing on social media.
+#### 3. ACID Pro Paradigm: Real-Time Loop Sequencing & Synthesis
+*   **ACID Synth Loops Library:** Features a real-time Web Audio synthesizer that generates continuous instrument loops directly on the timeline, rather than relying on pre-recorded audio:
+    *   *Muladhara Drums:* Synthesized TR-808 kick beats and noise-modulated snare bursts.
+    *   *Solfeggio Sub-Bass:* Sine-wave sub-bass frequencies matching target resonance frequencies.
+    *   *Anahata Pads:* Triangle-wave chord progression sweeps with attack/decay envelope controls.
+    *   *Ajna Chimes:* Arpeggiating sine-wave bell chimes.
+*   **Live Import Catalog:** Synchronized loading of backing tracks directly from the cloud database or local disk uploads into active tracks.
 
-### Feature Node 9: Multi-Track Studio DAW Workstation
-A separate workstation environment reserved for paid subscribers that mirrors the features of classic audio editing suites.
-- **Multi-DAW Capabilities:** Provides multi-track timeline recording where users can sync vocals with multiple custom-imported audio files.
-- **Waveform Segment Editing:** Visualizes audio segments as interactive waveforms that can be split, trimmed, and dragged across the timeline.
-- **Automation Envelopes:** Renders volume automation overlay nodes that allow users to draw volume changes directly onto individual audio clips.
-- **Sound Forge Mixing & Master Mixdown:** Consolidates all active tracks, volume levels, and panning automation into a single, high-fidelity `.wav` output buffer.
+#### 4. FL Studio Paradigm: Timeline Automation & ARC-5 DSP Effects
+*   **Vocal Pitch & Key Shift:** Pitch-shifting insert effect utilizing a crossfading, dual-delay line LFO algorithm that changes vocal key (-12 to +12 semitones) while preserving formants.
+*   **ARC-5 DSP Effects Inserts:** Each track has access to high-fidelity real-time Web Audio insert nodes:
+    *   *Peaking Acoustic Coupling Filters:* Lowpass (LPF) and Highpass (HPF) filters with configurable cutoff frequencies.
+    *   *Echo Delay:* Delay lines (0-1s) with feedback gains (0-90%).
+    *   *Tube Saturation:* Waveshaper distortion curves applying warmth and harmonic overtones.
+    *   *Binaural Beating & Galactic Reverb:* Complex routing that splits carrier frequencies across left/right channels with offset values (e.g., 8 Hz) to entrain brainwaves, or feeds signals to multi-stage decay buffers.
 
-### Feature Node 10: Multiplanetary Collaboration Lobby (Frequency Lab)
-- **Multiplayer Synchronizers:** Connects users in a virtual lobby to run bio-resonance sweeps together.
-- **Synchronized Solfeggio Maps:** Displays a live constellation map showing real-time frequency alignment across all connected users.
 
 ---
 
@@ -173,3 +180,17 @@ Ariyus-One utilizes a tiered model powered by integrated payment processors.
 3.  **Phase 3 (Completed):** User authentication, profile progression, and the Alignment Challenges Engine.
 4.  **Phase 4 (In Progress):** Integrating Stripe payment terminals and multi-track mixdown tools.
 5.  **Phase 5 (Future):** Mobile applications (iOS/Android native wrappers) and VST plugins for integration with standard DAWs.
+
+---
+
+## 7. Symbolism of the Name Ariyus
+
+The name **Ariyus** was selected to embody the deep intersection of musical expression, cosmic tuning, and spiritual bio-resonance that defines the platform:
+
+*   **Aria (Vocal & Breath):** Derived from the Italian word for "air" and the musical term for a self-contained, expressive melody. This represents the act of breathing and singing—the organic human input that fuels the platform.
+*   **Sirius (Cosmic Scale & Illumination):** Named after the brightest star in the night sky (historically known as the spiritual sun). It represents high-frequency alignment, guidance, and tuning the human voice to cosmic, natural mathematical constants.
+*   **Arya (Purity & Nobility):** An ancient Sanskrit term representing "noble" or "honorable." This reflects the purity of intent behind bio-resonance training and aligning oneself with natural harmonic laws.
+*   **"-us" (Collective Unity):** Represents "us"—the collaborative community of vocalists, and the shared resonance of human connection in the multiplanetary lobbies.
+
+The suffix **"One"** signifies unity (the synthesis of art, science, and technology) and pioneering status as the first-of-its-kind organic vocal DAW.
+

@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import App from './App';
 
-test('renders learn react link', () => {
+test('renders App and confirms loading panel is showing', () => {
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+  const loadingElement = screen.getByText(/Syncing acoustic/i);
+  expect(loadingElement).toBeInTheDocument();
 });

@@ -3,9 +3,23 @@ import { db } from '../firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
 const CreatorDashboard = ({ userData, user, navigate }) => {
-  const [recordings, setRecordings] = useState([]);
-  const [customSongs, setCustomSongs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [recordings, setRecordings] = useState(() => {
+    const savedRecs = localStorage.getItem('ariyus_shared_recordings');
+    if (savedRecs) {
+      const parsedRecs = JSON.parse(savedRecs);
+      return parsedRecs.filter(item => item.userId === (user?.uid || '') || item.userDisplayName === userData?.displayName);
+    }
+    return [];
+  });
+  const [customSongs, setCustomSongs] = useState(() => {
+    const savedSongs = localStorage.getItem('ariyus_custom_songs');
+    if (savedSongs) {
+      const parsedSongs = JSON.parse(savedSongs);
+      return parsedSongs.filter(item => item.userId === (user?.uid || ''));
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -33,21 +47,7 @@ const CreatorDashboard = ({ userData, user, navigate }) => {
         setCustomSongs(userSongs);
 
       } catch (err) {
-        console.warn("Firestore creator queries failed, loading fallback data:", err);
-        // Local storage fallbacks
-        const savedRecs = localStorage.getItem('ariyus_shared_recordings');
-        if (savedRecs) {
-          const parsedRecs = JSON.parse(savedRecs);
-          const filteredRecs = parsedRecs.filter(item => item.userId === user.uid || item.userDisplayName === userData?.displayName);
-          setRecordings(filteredRecs);
-        }
-
-        const savedSongs = localStorage.getItem('ariyus_custom_songs');
-        if (savedSongs) {
-          const parsedSongs = JSON.parse(savedSongs);
-          const filteredSongs = parsedSongs.filter(item => item.userId === user.uid);
-          setCustomSongs(filteredSongs);
-        }
+        console.warn("Firestore creator queries failed:", err);
       } finally {
         setLoading(false);
       }

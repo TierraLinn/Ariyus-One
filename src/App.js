@@ -5,7 +5,7 @@ import {
   createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged 
 } from "firebase/auth";
 import { 
-  doc, setDoc, getDoc, updateDoc, serverTimestamp 
+  doc, setDoc, getDoc, updateDoc, serverTimestamp, collection 
 } from "firebase/firestore";
 
 
@@ -91,6 +91,13 @@ function App() {
   const [currentRecording, setCurrentRecording] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [customAlert, setCustomAlert] = useState(null);
+
+  useEffect(() => {
+    window.alert = (message) => {
+      setCustomAlert(message);
+    };
+  }, []);
 
   const navigate = useCallback((s, props = {}) => { 
     window.scrollTo(0, 0); 
@@ -265,7 +272,8 @@ function App() {
 
     // Save locally
     setUserData(updatedProfile);
-    if (!isFirebaseConfigured) {
+    const isLocalUser = !user || !user.uid || user.uid.startsWith('local_');
+    if (!isFirebaseConfigured || isLocalUser) {
       localStorage.setItem('ariyus_local_user', JSON.stringify(updatedProfile));
     }
 
@@ -281,7 +289,8 @@ function App() {
       selectedFreq: recordingData.selectedFreq,
       effects: recordingData.effects,
       likes: [],
-      comments: []
+      comments: [],
+      duetPartner: currentRecording?.duetPartner || null
     };
 
     // Persist to local social list
@@ -289,7 +298,7 @@ function App() {
     const sharedList = currentShared ? JSON.parse(currentShared) : [];
     localStorage.setItem('ariyus_shared_recordings', JSON.stringify([newRecordingItem, ...sharedList]));
 
-    if (isFirebaseConfigured && user) {
+    if (isFirebaseConfigured && user && !isLocalUser) {
       try {
         // Update user XP in Firestore
         const userRef = doc(db, "users", user.uid);
@@ -297,8 +306,13 @@ function App() {
           xp: updatedXp,
           voiceSignature: recordingData.voiceSignature
         });
-        // We could also upload the file to Firebase Storage if files are active,
-        // but local blob URLs function beautifully for testing local state.
+        
+        // Save the recording to the recordings collection
+        const recordingsRef = collection(db, "recordings");
+        await setDoc(doc(recordingsRef, newRecordingItem.id), {
+          ...newRecordingItem,
+          createdAt: serverTimestamp()
+        });
       } catch (err) {
         console.warn("Firestore share details failed to write, saved locally:", err);
       }
@@ -318,9 +332,10 @@ function App() {
     };
 
     setUserData(updatedProfile);
-    if (!isFirebaseConfigured) {
+    const isLocalUser = !user || !user.uid || user.uid.startsWith('local_');
+    if (!isFirebaseConfigured || isLocalUser) {
       localStorage.setItem('ariyus_local_user', JSON.stringify(updatedProfile));
-    } else if (user) {
+    } else {
       try {
         const userRef = doc(db, "users", user.uid);
         await updateDoc(userRef, { tier });
@@ -359,9 +374,10 @@ function App() {
     };
 
     setUserData(updatedProfile);
-    if (!isFirebaseConfigured) {
+    const isLocalUser = !user || !user.uid || user.uid.startsWith('local_');
+    if (!isFirebaseConfigured || isLocalUser) {
       localStorage.setItem('ariyus_local_user', JSON.stringify(updatedProfile));
-    } else if (user) {
+    } else {
       try {
         const userRef = doc(db, "users", user.uid);
         await updateDoc(userRef, {
@@ -475,6 +491,19 @@ function App() {
     <div className="App">
       <LivingBackground />
       {renderScreen()}
+
+      {/* Custom alert modal popup */}
+      {customAlert && (
+        <div className="custom-alert-overlay" onClick={() => setCustomAlert(null)}>
+          <div className="custom-alert-box glass-panel" onClick={(e) => e.stopPropagation()}>
+            <h3>Ariyus Notification</h3>
+            <p>{customAlert}</p>
+            <button onClick={() => setCustomAlert(null)} className="glowing-button" style={{ margin: '0 auto' }}>
+              Acknowledge
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Floating Bottom Navigation Bar */}
       {userData && screen !== 'Auth' && screen !== 'Loading' && (

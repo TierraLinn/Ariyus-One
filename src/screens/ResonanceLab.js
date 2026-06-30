@@ -53,13 +53,15 @@ const FrequencyLab = ({ navigate, user, userData }) => {
   const mandalaCanvasRef = useRef(null);
 
   const solfeggioFrequencies = [
-    { hz: 396, title: 'UT - Liberating Guilt & Fear', desc: 'Acoustic keys to release deep sub-conscious mental obstacles and guilt layers.', color: '#ff0055' },
-    { hz: 417, title: 'RE - Undoing Situations', desc: 'Produces energy to clean traumatic patterns and support transformational changes.', color: '#ff6600' },
-    { hz: 432, title: 'Natural Cosmic Vibration', desc: 'Matches natural cosmic harmonics, bringing clarity and calm to the acoustic model.', color: '#ffcc00' },
-    { hz: 528, title: 'MI - Transformation & Miracles', desc: 'Known as the healing tone to spark cellular vitality and repair DNA helix elements.', color: '#00ff66' },
-    { hz: 639, title: 'FA - Harmonic Connections', desc: 'Enhances relationship bonds, communications, and network coherence.', color: '#00ccff' },
-    { hz: 741, title: 'SOL - Cleanse Expression', desc: 'Aids self-expression, toxic cleansing, and intuitive resolution keys.', color: '#0066ff' },
-    { hz: 852, title: 'LA - Cosmic Order Sync', desc: 'Re-aligns local awareness with spiritual frameworks and absolute truth structures.', color: '#cc00ff' }
+    { hz: 396, title: 'UT - Liberating Guilt & Fear', desc: 'Acoustic keys to release deep sub-conscious mental obstacles and guilt layers (Root Chakra).', color: '#ff0055' },
+    { hz: 417, title: 'RE - Undoing Situations', desc: 'Produces energy to clean traumatic patterns and support transformational changes (Sacral Chakra).', color: '#ff6600' },
+    { hz: 432, title: 'Natural Cosmic Vibration', desc: 'Matches natural cosmic harmonics, bringing clarity and calm (Heart Sync).', color: '#ffcc00' },
+    { hz: 444, title: 'Key of David', desc: 'Resonates heart muscle cells, physical vitality, and deep physical grounding.', color: '#ffa500' },
+    { hz: 528, title: 'MI - Transformation & Miracles', desc: 'Known as the healing tone to spark cellular vitality and repair DNA helix elements (Solar Plexus).', color: '#00ff66' },
+    { hz: 639, title: 'FA - Harmonic Connections', desc: 'Enhances relationship bonds, communications, and network coherence (Heart/Throat).', color: '#00ccff' },
+    { hz: 741, title: 'SOL - Cleanse Expression', desc: 'Aids self-expression, toxic cleansing, and intuitive resolution keys (Throat Chakra).', color: '#0066ff' },
+    { hz: 852, title: 'LA - Cosmic Order Sync', desc: 'Re-aligns local awareness with spiritual frameworks and absolute truth structures (Third Eye).', color: '#cc00ff' },
+    { hz: 963, title: 'SI - Pineal Activation', desc: 'Crown Chakra frequency, connecting awareness to the universal source of alignment.', color: '#ee82ee' }
   ];
 
   const activeIntention = solfeggioFrequencies.find(f => f.hz === selectedHz) || {
