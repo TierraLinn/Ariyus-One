@@ -79,6 +79,24 @@ const HomeNexus = ({ userData, navigate }) => {
             Go to Competitions
           </button>
         </div>
+
+        {/* Interactive Vocal Coach Card */}
+        <div className="glass-panel" style={{ margin: 0, borderColor: 'var(--primary-glow)', background: 'rgba(0, 242, 255, 0.03)' }}>
+          <span style={{ fontSize: '0.75rem', background: 'var(--primary-glow)', color: '#000', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>
+            🛡️ Warmup Coach
+          </span>
+          <h3 style={{ marginTop: '12px', marginBottom: '8px', color: '#fff', fontSize: '1.25rem' }}>Acoustic Scale Challenges</h3>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', lineHeight: '1.4', marginBottom: '15px' }}>
+            Train your voice with target tuning scale challenges. Practice major scales, sustained tones, and Solfeggio calibration with real-time visual coaching templates.
+          </p>
+          <button 
+            className="glowing-button secondary" 
+            style={{ margin: 0, padding: '8px 16px', fontSize: '0.8rem', borderColor: 'var(--primary-glow)', color: 'var(--primary-glow)' }}
+            onClick={() => navigate('VocalCoach')}
+          >
+            Start Scale Challenges
+          </button>
+        </div>
       </div>
 
       {/* Voice Signature Showcase Card */}
