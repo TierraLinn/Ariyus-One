@@ -71,6 +71,7 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
   const voiceDelayNodeRef = useRef(null);
   const trackDelayNodeRef = useRef(null);
   const peakingNodeRef = useRef(null);
+  const carrierOscRef = useRef(null);
 
   const { selectedSong, score = 75, playbackUrl, pitchHistory = [] } = currentRecording || {};
   const lyricsLines = React.useMemo(() => {
@@ -145,7 +146,6 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
     peakingNodeRef.current = peakingNode;
 
     const pitchRatio = selectedFreq / 440;
-    const voicePitchShifter = createPitchShifterNode(ctx, pitchRatio);
     const trackPitchShifter = createPitchShifterNode(ctx, pitchRatio);
 
     // Autotune snap phase modulation nodes
@@ -168,7 +168,7 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
       const waveshaper = ctx.createWaveShaper();
       waveshaper.curve = makeDistortionCurve(40);
       peakingNode.connect(waveshaper);
-      waveshaper.connect(voicePitchShifter);
+      waveshaper.connect(voicePanNode);
     } else if (selectedFilter === 'reverb') {
       const delay = ctx.createDelay();
       const feedback = ctx.createGain();
@@ -179,8 +179,8 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
       delay.connect(feedback);
       feedback.connect(delay);
 
-      peakingNode.connect(voicePitchShifter);
-      delay.connect(voicePitchShifter);
+      peakingNode.connect(voicePanNode);
+      delay.connect(voicePanNode);
     } else if (selectedFilter === 'echo') {
       const delay = ctx.createDelay();
       const feedback = ctx.createGain();
@@ -191,8 +191,8 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
       delay.connect(feedback);
       feedback.connect(delay);
 
-      peakingNode.connect(voicePitchShifter);
-      delay.connect(voicePitchShifter);
+      peakingNode.connect(voicePanNode);
+      delay.connect(voicePanNode);
     } else if (selectedFilter === 'denoise') {
       const hp = ctx.createBiquadFilter();
       hp.type = 'highpass';
@@ -204,12 +204,11 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
 
       peakingNode.connect(hp);
       hp.connect(lp);
-      lp.connect(voicePitchShifter);
+      lp.connect(voicePanNode);
     } else {
-      peakingNode.connect(voicePitchShifter);
+      peakingNode.connect(voicePanNode);
     }
 
-    voicePitchShifter.connect(voicePanNode);
     voicePanNode.connect(ctx.destination);
 
     // Backing track routing
@@ -221,6 +220,10 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
     return () => {
       voiceAudio.pause();
       trackAudio.pause();
+      if (carrierOscRef.current) {
+        try { carrierOscRef.current.stop(); } catch (e) {}
+        carrierOscRef.current = null;
+      }
       if (ctx.state !== 'closed') {
         ctx.close();
       }
@@ -330,11 +333,42 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
     if (isPlaying) {
       voiceAudioRef.current.pause();
       trackAudioRef.current.pause();
+      if (carrierOscRef.current) {
+        try { carrierOscRef.current.stop(); } catch (e) {}
+        carrierOscRef.current = null;
+      }
       setIsPlaying(false);
     } else {
       if (audioCtxRef.current.state === 'suspended') {
         await audioCtxRef.current.resume();
       }
+      
+      // Start carrier resonance bed
+      if (audioCtxRef.current) {
+        if (carrierOscRef.current) {
+          try { carrierOscRef.current.stop(); } catch (e) {}
+        }
+        const ctx = audioCtxRef.current;
+        const osc = ctx.createOscillator();
+        const filter = ctx.createBiquadFilter();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(selectedFreq, ctx.currentTime);
+
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(150, ctx.currentTime);
+
+        gain.gain.setValueAtTime(0.02, ctx.currentTime);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start();
+        carrierOscRef.current = osc;
+      }
+
       trackAudioRef.current.currentTime = voiceAudioRef.current.currentTime;
       await Promise.all([
         voiceAudioRef.current.play(),
