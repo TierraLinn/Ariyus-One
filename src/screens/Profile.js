@@ -159,7 +159,12 @@ const Profile = ({ userData, handleSignOut, navigate }) => {
             { id: 'calibrated', title: 'Acoustic Calibration Initiate', icon: '🧬', desc: 'Lock in your initial Vocal Signature Profile.', earned: userData?.isCalibrated },
             { id: 'first_sing', title: 'First Karaoke Alignment', icon: '🎙️', desc: 'Complete and record your first track from the song library.', earned: recordings.length > 0 },
             { id: 'quantum_singer', title: 'Quantum Vocalist', icon: '💎', desc: 'Achieved an A+ or A++ pitch precision score on any performance.', earned: recordings.some(r => r.score >= 90) },
-            { id: 'solfeggio', title: 'Solfeggio Adept', icon: '🔱', desc: 'Shared any performance retuned into organic frequencies.', earned: recordings.some(r => r.selectedFreq) }
+            { id: 'solfeggio', title: 'Solfeggio Adept', icon: '🔱', desc: 'Shared any performance retuned into organic frequencies.', earned: recordings.some(r => r.selectedFreq) },
+            { id: 'tuning_coach', title: 'Tuning Adept', icon: '🛡️', desc: 'Completed a structured scale training warmup.', earned: localStorage.getItem('ariyus_coach_completed') === 'true' },
+            { id: 'sound_bath', title: 'Zen Resonator', icon: '🧘', desc: 'Activated a spatial 3D Sound Bath frequency bed.', earned: localStorage.getItem('ariyus_used_sound_bath') === 'true' },
+            { id: 'battle_gladiator', title: 'Arena Gladiator', icon: '⚔️', desc: 'Defeated a rival singer in the Singing Battle Arena.', earned: localStorage.getItem('ariyus_battle_won') === 'true' },
+            { id: 'duet_legend', title: 'Duet Legend', icon: '👥', desc: 'Collaborated and mixed vocals with a Billboard performer.', earned: recordings.some(r => r.isDuet) },
+            { id: 'luminary_king', title: 'Ascendant Luminary', icon: '👑', desc: 'Achieve Cosmic journey Level 5 (1000+ XP).', earned: levelInfo.level >= 5 }
           ].map(badge => (
             <div 
               key={badge.id}

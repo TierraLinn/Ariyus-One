@@ -262,6 +262,9 @@ function App() {
       playbackUrl: recordingData.playbackUrl,
       score: recordingData.score,
       grade: recordingData.grade,
+      isDuet: recordingData.isDuet || false,
+      partnerName: recordingData.partnerName || '',
+      selectedFreq: recordingData.selectedFreq || 440,
       likes: [],
       comments: []
     };

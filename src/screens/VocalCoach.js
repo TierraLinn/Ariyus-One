@@ -163,6 +163,7 @@ const VocalCoach = ({ navigate, userData, setUserData }) => {
                 setCompleted(true);
                 setActive(false);
                 setFeedback('🎉 Warmup Challenge Completed! You earned +50 XP!');
+                localStorage.setItem('ariyus_coach_completed', 'true');
                 // Award XP
                 if (userData) {
                   const updatedXp = (userData.xp || 0) + 50;

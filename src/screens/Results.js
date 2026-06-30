@@ -659,6 +659,9 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
       grade,
       playbackUrl,
       vocalFilter: selectedFilter,
+      isDuet: currentRecording?.isDuet || false,
+      partnerName: currentRecording?.partnerName || '',
+      selectedFreq,
       caption: caption || "Aligned my frequencies to cosmic heights!"
     });
   };
@@ -936,7 +939,9 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
             onClick={() => {
               const nextVal = !isSoundBath;
               setIsSoundBath(nextVal);
-              if (!nextVal) {
+              if (nextVal) {
+                localStorage.setItem('ariyus_used_sound_bath', 'true');
+              } else {
                 if (leftOscRef.current) { try { leftOscRef.current.stop(); } catch (e) {} leftOscRef.current = null; }
                 if (rightOscRef.current) { try { rightOscRef.current.stop(); } catch (e) {} rightOscRef.current = null; }
               }

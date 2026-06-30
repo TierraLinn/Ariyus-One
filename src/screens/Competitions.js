@@ -127,6 +127,9 @@ const Competitions = ({ navigate, userData, setUserData }) => {
 
             // Compute awards
             const userWon = myScore >= opponentScore;
+            if (userWon) {
+              localStorage.setItem('ariyus_battle_won', 'true');
+            }
             if (userWon && userData) {
               const updatedCoins = (userData.coins || 500) + 100;
               const updatedXp = (userData.xp || 120) + 100;
