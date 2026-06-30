@@ -38,6 +38,9 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
   const [autotuneStrength, setAutotuneStrength] = useState(50);
   const pitchCanvasRef = useRef(null);
   const livePitchRef = useRef(0);
+  
+  const [cameraFilter, setCameraFilter] = useState('aura');
+  const cameraFilterCanvasRef = useRef(null);
 
   const toggleMute = () => {
     const nextMuted = !isMuted;
@@ -178,6 +181,189 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
       resizeObserver.disconnect();
     };
   }, [isRecording]);
+
+  useEffect(() => {
+    if (!isRecording || cameraFilter === 'none') return;
+    const canvas = cameraFilterCanvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    let animationId;
+    let width = canvas.width = canvas.offsetWidth;
+    let height = canvas.height = canvas.offsetHeight;
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (canvas) {
+        width = canvas.width = canvas.offsetWidth;
+        height = canvas.height = canvas.offsetHeight;
+      }
+    });
+    resizeObserver.observe(canvas);
+
+    const particles = [];
+    const maxParticles = 40;
+
+    const drawFilter = () => {
+      animationId = requestAnimationFrame(drawFilter);
+      ctx.clearRect(0, 0, width, height);
+
+      // 1. Compute vocal volume from the live analyser node
+      let vol = 20; 
+      if (analyserRef.current) {
+        const bufferLength = analyserRef.current.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        analyserRef.current.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
+        vol = sum / bufferLength; // 0 to 255
+      }
+
+      // Map vowel phonemes to specific Chakra colors:
+      let chakraColor = 'rgba(0, 242, 255, 0.4)'; // throat default
+      let glowColor = '#00f2ff';
+      const vowel = liveVowel.toLowerCase();
+      if (vowel.includes('/u/')) {
+        chakraColor = 'rgba(255, 0, 59, 0.4)'; // Root (Red)
+        glowColor = '#ff003b';
+      } else if (vowel.includes('/o/')) {
+        chakraColor = 'rgba(255, 112, 0, 0.4)'; // Sacral (Orange)
+        glowColor = '#ff7000';
+      } else if (vowel.includes('/a/')) {
+        chakraColor = 'rgba(0, 255, 135, 0.4)'; // Heart (Green)
+        glowColor = '#00ff87';
+      } else if (vowel.includes('/e/')) {
+        chakraColor = 'rgba(0, 242, 255, 0.4)'; // Throat (Blue)
+        glowColor = '#00f2ff';
+      } else if (vowel.includes('/i/')) {
+        chakraColor = 'rgba(178, 0, 255, 0.4)'; // Crown (Violet)
+        glowColor = '#b200ff';
+      }
+
+      const pulse = 10 + (vol / 255) * 45;
+
+      // 2. Render selected visualizer filter mode
+      if (cameraFilter === 'aura') {
+        const time = Date.now() * 0.001;
+        const cx = width / 2 + Math.sin(time) * 15;
+        const cy = height / 2 + Math.cos(time * 0.8) * 15;
+
+        const grad = ctx.createRadialGradient(cx, cy, width * 0.1, cx, cy, width * 0.7 + pulse * 2);
+        grad.addColorStop(0, 'rgba(4, 3, 24, 0)');
+        grad.addColorStop(0.65, `${chakraColor.replace('0.4', '0.08')}`);
+        grad.addColorStop(0.9, `${chakraColor.replace('0.4', '0.28')}`);
+        grad.addColorStop(1, `${chakraColor.replace('0.4', '0.62')}`);
+        
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, width, height);
+
+        ctx.strokeStyle = glowColor;
+        ctx.lineWidth = 2 + (vol / 80);
+        ctx.shadowBlur = 10 + (vol / 30);
+        ctx.shadowColor = glowColor;
+        ctx.strokeRect(5, 5, width - 10, height - 10);
+        ctx.shadowBlur = 0;
+
+      } else if (cameraFilter === 'geometry') {
+        ctx.strokeStyle = `rgba(255, 0, 193, ${0.25 + (vol / 255) * 0.4})`;
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(10, 10, width - 20, height - 20);
+
+        const cornerSize = 40 + pulse * 0.5;
+        ctx.strokeStyle = `rgba(0, 242, 255, ${0.35 + (vol / 255) * 0.45})`;
+        ctx.lineWidth = 1.5;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = 'var(--primary-glow)';
+
+        ctx.beginPath();
+        ctx.moveTo(15, 15 + cornerSize);
+        ctx.lineTo(15, 15);
+        ctx.lineTo(15 + cornerSize, 15);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(width - 15 - cornerSize, 15);
+        ctx.lineTo(width - 15, 15);
+        ctx.lineTo(width - 15, 15 + cornerSize);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(15, height - 15 - cornerSize);
+        ctx.lineTo(15, height - 15);
+        ctx.lineTo(15 + cornerSize, height - 15);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(width - 15 - cornerSize, height - 15);
+        ctx.lineTo(width - 15, height - 15);
+        ctx.lineTo(width - 15, height - 15 - cornerSize);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        if (particles.length < maxParticles && vol > 60 && Math.random() < 0.35) {
+          particles.push({
+            x: Math.random() * width,
+            y: height - 15,
+            vx: (Math.random() - 0.5) * 1.5,
+            vy: -1.2 - Math.random() * 2.0,
+            alpha: 1.0,
+            color: glowColor
+          });
+        }
+
+        ctx.lineWidth = 1;
+        particles.forEach((p, pIdx) => {
+          p.x += p.vx;
+          p.y += p.vy;
+          p.alpha -= 0.015;
+
+          ctx.fillStyle = p.color;
+          ctx.globalAlpha = p.alpha;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 1.8 + (vol / 120), 0, Math.PI * 2);
+          ctx.fill();
+
+          if (p.alpha <= 0) particles.splice(pIdx, 1);
+        });
+        ctx.globalAlpha = 1.0; 
+
+      } else if (cameraFilter === 'spectrum') {
+        ctx.lineWidth = 1.8;
+        ctx.strokeStyle = `hsla(${(Date.now() / 35) % 360}, 100%, 70%, 0.65)`;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = ctx.strokeStyle;
+
+        ctx.beginPath();
+        for (let y = 10; y < height - 10; y += 4) {
+          const ratio = y / height;
+          const index = Math.floor(ratio * 32);
+          let amp = 0;
+          if (analyserRef.current) {
+            const tempBuffer = new Uint8Array(64);
+            analyserRef.current.getByteFrequencyData(tempBuffer);
+            amp = tempBuffer[index] || 0;
+          } else {
+            amp = 20 + Math.sin(y * 0.05 + Date.now() * 0.005) * 12;
+          }
+          const wHeight = (amp / 255) * 45;
+
+          ctx.moveTo(10, y);
+          ctx.lineTo(10 + wHeight, y);
+
+          ctx.moveTo(width - 10, y);
+          ctx.lineTo(width - 10 - wHeight, y);
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+    };
+
+    drawFilter();
+
+    return () => {
+      cancelAnimationFrame(animationId);
+      resizeObserver.disconnect();
+    };
+  }, [isRecording, cameraFilter, liveVowel]);
 
   useEffect(() => {
     if (song && song.lyrics) {
@@ -511,9 +697,67 @@ const RecordingStudio = ({ currentRecording, setCurrentRecording, navigate }) =>
               }} 
             />
           )}
-          <div style={{ position: 'absolute', width: '100%', height: '100%', zIndex: 2 }}>
+
+          {isVideoMode && isRecording && cameraFilter !== 'none' && (
+            <canvas 
+              ref={cameraFilterCanvasRef} 
+              style={{ 
+                position: 'absolute', 
+                width: '100%', 
+                height: '100%', 
+                top: 0, left: 0,
+                pointerEvents: 'none',
+                zIndex: 2
+              }} 
+            />
+          )}
+
+          <div style={{ position: 'absolute', width: '100%', height: '100%', zIndex: 1 }}>
             <VoiceReactiveVisualizer analyser={analyserRef.current} />
           </div>
+
+          {/* Floating camera filter mode selector */}
+          {isVideoMode && isRecording && (
+            <div style={{
+              position: 'absolute',
+              top: '12px', left: '12px',
+              display: 'flex', gap: '5px',
+              zIndex: 10,
+              background: 'rgba(6, 4, 30, 0.65)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '8px',
+              padding: '3px',
+              backdropFilter: 'blur(8px)'
+            }}>
+              {[
+                { filter: 'none', label: 'None' },
+                { filter: 'aura', label: '✨ Aura' },
+                { filter: 'geometry', label: '🔷 Geometry' },
+                { filter: 'spectrum', label: '📊 Waves' }
+              ].map(btn => (
+                <button
+                  key={btn.filter}
+                  onClick={() => setCameraFilter(btn.filter)}
+                  style={{
+                    background: cameraFilter === btn.filter ? 'var(--secondary-glow)' : 'transparent',
+                    border: 'none',
+                    borderRadius: '6px',
+                    color: cameraFilter === btn.filter ? '#02001a' : '#fff',
+                    fontSize: '0.62rem',
+                    fontWeight: 'bold',
+                    fontFamily: '"Orbitron", sans-serif',
+                    padding: '3px 8px',
+                    cursor: 'pointer',
+                    textTransform: 'uppercase',
+                    transition: 'all 0.25s ease'
+                  }}
+                >
+                  {btn.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Pitch Guide Trajectory Grid */}
           <div style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', padding: '8px 12px', background: 'rgba(6, 4, 30, 0.75)', borderTop: '1px solid rgba(255,255,255,0.06)', zIndex: 3 }}>
             <span style={{ fontSize: '0.62rem', color: 'var(--text-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
