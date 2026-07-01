@@ -41,7 +41,7 @@ const createPitchShifterNode = (ctx, pitchRatio) => {
   return node;
 };
 
-const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
+const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userData, setUserData }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [voiceVol, setVoiceVol] = useState(80);
   const [trackVol, setTrackVol] = useState(60);
@@ -82,6 +82,9 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
   const [isSoundBath, setIsSoundBath] = useState(false);
   const [soundBathType, setSoundBathType] = useState('alpha');
   const [showDNACard, setShowDNACard] = useState(false);
+  const [showCymaticNFT, setShowCymaticNFT] = useState(false);
+  const [minted, setMinted] = useState(false);
+  const [isMinting, setIsMinting] = useState(false);
   const dnaCanvasRef = useRef(null);
   const [partnerVol, setPartnerVol] = useState(80);
   const [partnerPan, setPartnerPan] = useState(-0.3);
@@ -102,6 +105,122 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
       curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
     }
     return curve;
+  };
+
+  const generateCymaticSVG = () => {
+    const numPetals = 8 + Math.floor((score / 100) * 16);
+    
+    // Gradients based on frequency alignment
+    let primaryColor = '#00f2ff';
+    let secondaryColor = '#b200ff';
+    let chakraName = 'Throat & Crown';
+
+    if (selectedFreq === 396) {
+      primaryColor = '#ff003b';
+      secondaryColor = '#ff7000';
+      chakraName = 'Root & Sacral';
+    } else if (selectedFreq === 417) {
+      primaryColor = '#ff7000';
+      secondaryColor = '#ffcc00';
+      chakraName = 'Sacral & Solar';
+    } else if (selectedFreq === 432 || selectedFreq === 528) {
+      primaryColor = '#00ff87';
+      secondaryColor = '#00f2ff';
+      chakraName = 'Heart & Throat';
+    } else if (selectedFreq === 741) {
+      primaryColor = '#b200ff';
+      secondaryColor = '#ff00c1';
+      chakraName = 'Third-Eye & Crown';
+    }
+
+    // Mathematical SVG path builder for petals
+    const drawPetals = (radius, count, rotateDir) => {
+      let paths = '';
+      for (let i = 0; i < count; i++) {
+        const angle = (i * Math.PI * 2) / count;
+        const midAngle = angle + Math.PI / count;
+        const endAngle = angle + (Math.PI * 2) / count;
+        
+        const cp1x = 200 + Math.cos(angle) * (radius * 0.85);
+        const cp1y = 200 + Math.sin(angle) * (radius * 0.85);
+        const destx = 200 + Math.cos(midAngle) * radius;
+        const desty = 200 + Math.sin(midAngle) * radius;
+        const cp2x = 200 + Math.cos(endAngle) * (radius * 0.85);
+        const cp2y = 200 + Math.sin(endAngle) * (radius * 0.85);
+
+        paths += `<path d="M 200 200 Q ${cp1x.toFixed(1)} ${cp1y.toFixed(1)} ${destx.toFixed(1)} ${desty.toFixed(1)} Q ${cp2x.toFixed(1)} ${cp2y.toFixed(1)} 200 200" fill="url(#mandalaGrad)" stroke="${primaryColor}" stroke-width="1.5" opacity="0.85" />`;
+      }
+      return `<g class="${rotateDir}" style="transform-origin: 200px 200px;">${paths}</g>`;
+    };
+
+    // Build grid concentric rings
+    let gridRings = '';
+    for (let r = 50; r <= 170; r += 30) {
+      gridRings += `<circle cx="200" cy="200" r="${r}" fill="none" stroke="rgba(255, 255, 255, 0.05)" stroke-width="1" />`;
+    }
+
+    // Build star background
+    let stars = '';
+    for (let i = 0; i < 40; i++) {
+      const sx = Math.floor(Math.random() * 360) + 20;
+      const sy = Math.floor(Math.random() * 360) + 20;
+      const op = (0.3 + Math.random() * 0.6).toFixed(2);
+      stars += `<circle cx="${sx}" cy="${sy}" r="1" fill="#ffffff" opacity="${op}" />`;
+    }
+
+    return `
+<svg viewBox="0 0 400 400" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="background:#06041e; font-family:'Orbitron', sans-serif;">
+  <style>
+    @keyframes spinRight {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    @keyframes spinLeft {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(-360deg); }
+    }
+    @keyframes pulseCore {
+      0% { transform: scale(0.94); opacity: 0.9; }
+      100% { transform: scale(1.06); opacity: 1; }
+    }
+    .spin-r { animation: spinRight 25s linear infinite; }
+    .spin-l { animation: spinLeft 35s linear infinite; }
+    .pulse-c { animation: pulseCore 3s ease-in-out infinite alternate; transform-origin: 200px 200px; }
+  </style>
+
+  <defs>
+    <radialGradient id="mandalaGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="rgba(6, 4, 30, 0.2)" />
+      <stop offset="100%" stop-color="${secondaryColor}" stop-opacity="0.9" />
+    </radialGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Star Background -->
+  ${stars}
+
+  <!-- Concentric sacred grids -->
+  ${gridRings}
+
+  <!-- Layer 1: Outer Petals -->
+  ${drawPetals(140, numPetals, 'spin-r')}
+
+  <!-- Layer 2: Inner Petals -->
+  ${drawPetals(100, Math.max(6, numPetals - 4), 'spin-l')}
+
+  <!-- Glowing Core -->
+  <circle cx="200" cy="200" r="14" fill="#ffffff" filter="url(#glow)" class="pulse-c" style="fill-opacity: 1;" />
+  <circle cx="200" cy="200" r="22" fill="none" stroke="${primaryColor}" stroke-width="2.5" class="pulse-c" />
+
+  <!-- Dynamic Metadata Overlay -->
+  <text x="200" y="35" fill="rgba(255,255,255,0.4)" font-size="9" text-anchor="middle" letter-spacing="1">ARIYUS CYMATIC NFT BLUEPRINT</text>
+  <text x="200" y="355" fill="#ffffff" font-size="12" font-weight="bold" text-anchor="middle">${selectedSong?.title || 'Cosmic Sing'}</text>
+  <text x="200" y="375" fill="${primaryColor}" font-size="9" text-anchor="middle" font-weight="bold" letter-spacing="0.5">ALIGNMENT: ${score}% | ${selectedFreq}Hz (${chakraName})</text>
+</svg>
+    `.trim();
   };
 
   useEffect(() => {
@@ -912,6 +1031,9 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
             <button className="glowing-button secondary" onClick={() => setShowDNACard(true)} style={{ margin: 0, borderColor: 'var(--primary-glow)', color: 'var(--primary-glow)' }}>
               🧬 Vocal DNA Mandala
             </button>
+            <button className="glowing-button secondary" onClick={() => setShowCymaticNFT(true)} style={{ margin: 0, borderColor: 'var(--secondary-glow)', color: 'var(--secondary-glow)' }}>
+              🎨 Cymatic NFT Exporter
+            </button>
             <button className="glowing-button secondary" onClick={saveToDrafts} style={{ margin: 0 }}>
               💾 Save to Drafts
             </button>
@@ -1144,6 +1266,90 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate }) => {
                 className="glowing-button secondary" 
                 onClick={() => setShowDNACard(false)}
                 style={{ margin: 0 }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cymatic Mandala NFT Exporter Modal */}
+      {showCymaticNFT && (
+        <div className="custom-alert-overlay" onClick={() => setShowCymaticNFT(false)}>
+          <div className="custom-alert-box glass-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '460px', width: '90%', padding: '24px', textAlign: 'center' }}>
+            <h3 style={{ fontFamily: '"Orbitron", sans-serif', color: 'var(--secondary-glow)', textShadow: '0 0 10px var(--secondary-glow)', marginBottom: '8px' }}>
+              🎨 CYMATIC NFT EXPORTER
+            </h3>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginBottom: '15px' }}>
+              Download or mint an interactive vector animation containing your vocal alignment blueprint.
+            </p>
+
+            {/* Interactive SVG Preview Area */}
+            <div 
+              style={{ background: '#06041e', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', padding: '12px', display: 'flex', justifyContent: 'center', marginBottom: '20px', height: '280px' }}
+              dangerouslySetInnerHTML={{ __html: generateCymaticSVG() }}
+            />
+
+            {/* Mint status messages */}
+            {isMinting && (
+              <div style={{ color: 'var(--primary-glow)', fontSize: '0.8rem', marginBottom: '15px', animation: 'pulseCore 1.5s ease-in-out infinite alternate' }}>
+                ⛓️ Syncing resonance contract matrix onto Cosmic Blockchain...
+              </div>
+            )}
+
+            {minted && (
+              <div style={{ color: '#00ff66', fontSize: '0.8rem', marginBottom: '15px', fontWeight: 'bold' }}>
+                🎉 SUCCESS! Vocal NFT Blueprint Minted! Gained +150 Coins!
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button 
+                  className="glowing-button"
+                  onClick={() => {
+                    const svgString = generateCymaticSVG();
+                    const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+                    const link = document.createElement('a');
+                    link.download = `${selectedSong?.title || 'Sing'}_Cymatic_Mandala.svg`;
+                    link.href = URL.createObjectURL(blob);
+                    link.click();
+                  }}
+                  style={{ flexGrow: 1, margin: 0, padding: '10px 0', fontSize: '0.8rem' }}
+                >
+                  💾 Download SVG
+                </button>
+
+                <button 
+                  className="glowing-button"
+                  disabled={isMinting || minted}
+                  onClick={() => {
+                    setIsMinting(true);
+                    setTimeout(() => {
+                      setIsMinting(false);
+                      setMinted(true);
+                      localStorage.setItem('ariyus_nft_minted', 'true');
+                      
+                      // Award coins
+                      if (userData) {
+                        const updatedCoins = (userData.coins || 500) + 150;
+                        const updatedProfile = { ...userData, coins: updatedCoins };
+                        setUserData(updatedProfile);
+                        localStorage.setItem('ariyus_local_user', JSON.stringify(updatedProfile));
+                      }
+                    }, 3000);
+                  }}
+                  style={{ flexGrow: 1, margin: 0, padding: '10px 0', fontSize: '0.8rem', background: minted ? '#00ff66' : 'var(--secondary-glow)', color: '#000', border: 'none' }}
+                >
+                  {isMinting ? '⛓️ Minting...' : (minted ? '✅ Minted' : '💎 Mint Vocal NFT')}
+                </button>
+              </div>
+
+              <button 
+                className="glowing-button secondary" 
+                onClick={() => { setShowCymaticNFT(false); setMinted(false); }}
+                style={{ margin: 0, padding: '10px 0' }}
               >
                 Close
               </button>

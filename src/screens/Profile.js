@@ -164,6 +164,7 @@ const Profile = ({ userData, handleSignOut, navigate }) => {
             { id: 'sound_bath', title: 'Zen Resonator', icon: '🧘', desc: 'Activated a spatial 3D Sound Bath frequency bed.', earned: localStorage.getItem('ariyus_used_sound_bath') === 'true' },
             { id: 'battle_gladiator', title: 'Arena Gladiator', icon: '⚔️', desc: 'Defeated a rival singer in the Singing Battle Arena.', earned: localStorage.getItem('ariyus_battle_won') === 'true' },
             { id: 'duet_legend', title: 'Duet Legend', icon: '👥', desc: 'Collaborated and mixed vocals with a Billboard performer.', earned: recordings.some(r => r.isDuet) },
+            { id: 'cymatic_collector', title: 'Cymatic Collector', icon: '🎨', desc: 'Minted a performance-reactive animated SVG mandala on the blockchain.', earned: localStorage.getItem('ariyus_nft_minted') === 'true' },
             { id: 'luminary_king', title: 'Ascendant Luminary', icon: '👑', desc: 'Achieve Cosmic journey Level 5 (1000+ XP).', earned: levelInfo.level >= 5 }
           ].map(badge => (
             <div 
