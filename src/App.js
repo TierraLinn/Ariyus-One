@@ -21,6 +21,7 @@ import Competitions from './screens/Competitions';
 import Profile from './screens/Profile';
 import DraftsList from './screens/DraftsList';
 import VocalCoach from './screens/VocalCoach';
+import VocalArcade from './screens/VocalArcade';
 
 // Helper to check if Firebase is configured with real credentials
 const isFirebaseConfigured = auth && auth.app && auth.app.options && auth.app.options.apiKey && auth.app.options.apiKey !== "YOUR_API_KEY";
@@ -335,6 +336,8 @@ function App() {
         return <DraftsList {...props} />;
       case 'VocalCoach':
         return <VocalCoach {...props} />;
+      case 'VocalArcade':
+        return <VocalArcade {...props} />;
       default:
         return user ? (userData?.isCalibrated ? <HomeNexus {...props} /> : <VocalCalibration {...props} />) : <AuthPortal {...props} />;
     }

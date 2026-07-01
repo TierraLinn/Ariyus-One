@@ -97,6 +97,24 @@ const HomeNexus = ({ userData, navigate }) => {
             Start Scale Challenges
           </button>
         </div>
+
+        {/* Vocal Arcade Game Card */}
+        <div className="glass-panel" style={{ margin: 0, borderColor: 'var(--tertiary-glow)', background: 'rgba(112, 0, 255, 0.03)' }}>
+          <span style={{ fontSize: '0.75rem', background: 'var(--tertiary-glow)', color: '#fff', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>
+            🎮 Arcade Game
+          </span>
+          <h3 style={{ marginTop: '12px', marginBottom: '8px', color: '#fff', fontSize: '1.25rem' }}>Space Journey Vocal Arcade</h3>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', lineHeight: '1.4', marginBottom: '15px' }}>
+            Navigate a space starfighter through glowing Solfeggio frequency gates by modulating your vocal pitch. Grab coins and practice precision intervals.
+          </p>
+          <button 
+            className="glowing-button secondary" 
+            style={{ margin: 0, padding: '8px 16px', fontSize: '0.8rem', borderColor: 'var(--tertiary-glow)', color: 'var(--tertiary-glow)' }}
+            onClick={() => navigate('VocalArcade')}
+          >
+            Launch Flight Arcade
+          </button>
+        </div>
       </div>
 
       {/* Voice Signature Showcase Card */}

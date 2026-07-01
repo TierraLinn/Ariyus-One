@@ -166,6 +166,7 @@ const Profile = ({ userData, handleSignOut, navigate }) => {
             { id: 'duet_legend', title: 'Duet Legend', icon: '👥', desc: 'Collaborated and mixed vocals with a Billboard performer.', earned: recordings.some(r => r.isDuet) },
             { id: 'cymatic_collector', title: 'Cymatic Collector', icon: '🎨', desc: 'Minted a performance-reactive animated SVG mandala on the blockchain.', earned: localStorage.getItem('ariyus_nft_minted') === 'true' },
             { id: 'harmonizer_choir', title: 'Choir Conductor', icon: '🎼', desc: 'Activate the AI Vocal Harmonizer to expand vocal layers.', earned: localStorage.getItem('ariyus_used_harmonizer') === 'true' },
+            { id: 'vocal_pilot', title: 'Vocal Pilot', icon: '🚀', desc: 'Guide the starship through Solfeggio Gates in the Vocal Arcade.', earned: localStorage.getItem('ariyus_arcade_completed') === 'true' },
             { id: 'luminary_king', title: 'Ascendant Luminary', icon: '👑', desc: 'Achieve Cosmic journey Level 5 (1000+ XP).', earned: levelInfo.level >= 5 }
           ].map(badge => (
             <div 
