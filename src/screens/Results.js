@@ -88,6 +88,15 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userDa
   const dnaCanvasRef = useRef(null);
   const [partnerVol, setPartnerVol] = useState(80);
   const [partnerPan, setPartnerPan] = useState(-0.3);
+  const [isHarmonizer, setIsHarmonizer] = useState(false);
+  const [thirdVol, setThirdVol] = useState(40);
+  const [fifthVol, setFifthVol] = useState(40);
+  const thirdHarmNodeRef = useRef(null);
+  const fifthHarmNodeRef = useRef(null);
+  const thirdHarmGainRef = useRef(null);
+  const fifthHarmGainRef = useRef(null);
+  const thirdHarmPanRef = useRef(null);
+  const fifthHarmPanRef = useRef(null);
 
   const { selectedSong, score = 75, playbackUrl, pitchHistory = [] } = currentRecording || {};
   const lyricsLines = React.useMemo(() => {
@@ -369,6 +378,46 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userDa
 
     voicePanNode.connect(ctx.destination);
 
+    // AI Vocal Harmonizer Parallel Graph Paths
+    const ratio3rd = Math.pow(2, 4 / 12); // Major 3rd (+4 semitones)
+    const ratio5th = Math.pow(2, 7 / 12); // Perfect 5th (+7 semitones)
+
+    const thirdNode = createPitchShifterNode(ctx, ratio3rd);
+    const fifthNode = createPitchShifterNode(ctx, ratio5th);
+
+    const thirdPan = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
+    const fifthPan = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
+
+    if (thirdPan.pan) thirdPan.pan.setValueAtTime(-0.4, t);
+    if (fifthPan.pan) fifthPan.pan.setValueAtTime(0.4, t);
+
+    const thirdGainNode = ctx.createGain();
+    const fifthGainNode = ctx.createGain();
+
+    const currentHarmVolumeRatio3rd = isHarmonizer ? (thirdVol / 100) * 0.4 : 0.0;
+    const currentHarmVolumeRatio5th = isHarmonizer ? (fifthVol / 100) * 0.4 : 0.0;
+
+    thirdGainNode.gain.setValueAtTime(currentHarmVolumeRatio3rd, t);
+    fifthGainNode.gain.setValueAtTime(currentHarmVolumeRatio5th, t);
+
+    // Connect parallel lines from the voice delay output
+    vocalDelayNode.connect(thirdNode);
+    thirdNode.connect(thirdPan);
+    thirdPan.connect(thirdGainNode);
+    thirdGainNode.connect(ctx.destination);
+
+    vocalDelayNode.connect(fifthNode);
+    fifthNode.connect(fifthPan);
+    fifthPan.connect(fifthGainNode);
+    fifthGainNode.connect(ctx.destination);
+
+    thirdHarmNodeRef.current = thirdNode;
+    fifthHarmNodeRef.current = fifthNode;
+    thirdHarmGainRef.current = thirdGainNode;
+    fifthHarmGainRef.current = fifthGainNode;
+    thirdHarmPanRef.current = thirdPan;
+    fifthHarmPanRef.current = fifthPan;
+
     // Backing track routing
     trackSource.connect(trackDelayNode);
     trackDelayNode.connect(trackPitchShifter);
@@ -397,6 +446,7 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userDa
         ctx.close();
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playbackUrl, selectedSong, currentRecording, selectedFilter, vocalDelay, isHighVibe, selectedFreq, autotuneStrength]);
 
   useEffect(() => {
@@ -468,7 +518,20 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userDa
     if (voiceAudioRef.current) voiceAudioRef.current.volume = voiceVol / 100;
     if (trackAudioRef.current) trackAudioRef.current.volume = trackVol / 100;
     if (partnerAudioRef.current) partnerAudioRef.current.volume = partnerVol / 100;
-  }, [voiceVol, trackVol, partnerVol]);
+
+    if (audioCtxRef.current) {
+      const t = audioCtxRef.current.currentTime;
+      const currentHarmVolumeRatio3rd = isHarmonizer ? (thirdVol / 100) * 0.4 : 0.0;
+      const currentHarmVolumeRatio5th = isHarmonizer ? (fifthVol / 100) * 0.4 : 0.0;
+
+      if (thirdHarmGainRef.current) {
+        thirdHarmGainRef.current.gain.setValueAtTime(currentHarmVolumeRatio3rd, t);
+      }
+      if (fifthHarmGainRef.current) {
+        fifthHarmGainRef.current.gain.setValueAtTime(currentHarmVolumeRatio5th, t);
+      }
+    }
+  }, [voiceVol, trackVol, partnerVol, isHarmonizer, thirdVol, fifthVol]);
 
   useEffect(() => {
     if (voicePanNodeRef.current && voicePanNodeRef.current.pan) {
@@ -948,6 +1011,62 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userDa
                 Snap vocal harmonic vibrations to the closest correct musical key.
               </span>
             </div>
+
+            {/* AI Vocal Harmonizer Choir controls */}
+            <div style={{ background: 'rgba(178,0,255,0.04)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(178,0,255,0.12)', marginTop: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--secondary-glow)', fontWeight: 'bold' }}>
+                  👥 AI Vocal Harmonizer Choir
+                </span>
+                <button
+                  className={`daw-track-btn ${isHarmonizer ? 'active' : ''}`}
+                  onClick={() => {
+                    setIsHarmonizer(!isHarmonizer);
+                    localStorage.setItem('ariyus_used_harmonizer', 'true');
+                  }}
+                  style={{ fontSize: '0.65rem', padding: '3px 8px', margin: 0 }}
+                >
+                  {isHarmonizer ? 'ON' : 'OFF'}
+                </button>
+              </div>
+              <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', display: 'block', marginBottom: '8px' }}>
+                Generate parallel resampled major-third (left) and perfect-fifth (right) backup harmonies.
+              </span>
+
+              {isHarmonizer && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' }}>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--primary-glow)', marginBottom: '3px' }}>
+                      <span>Harmony 3rd</span>
+                      <span>{thirdVol}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={thirdVol}
+                      onChange={e => setThirdVol(Number(e.target.value))}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--secondary-glow)', marginBottom: '3px' }}>
+                      <span>Harmony 5th</span>
+                      <span>{fifthVol}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={fifthVol}
+                      onChange={e => setFifthVol(Number(e.target.value))}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
       </div>
