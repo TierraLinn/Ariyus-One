@@ -24,7 +24,12 @@ import VocalCoach from './screens/VocalCoach';
 import VocalArcade from './screens/VocalArcade';
 
 // Helper to check if Firebase is configured with real credentials
-const isFirebaseConfigured = auth && auth.app && auth.app.options && auth.app.options.apiKey && auth.app.options.apiKey !== "YOUR_API_KEY";
+const isFirebaseConfigured = auth && 
+  auth.app && 
+  auth.app.options && 
+  auth.app.options.apiKey && 
+  auth.app.options.apiKey !== "YOUR_API_KEY" && 
+  auth.app.options.apiKey !== "AIzaSyDJHxitN732ejMhNX43J7SQfLg4voYr-gg";
 
 // Cosmic Background Particles Component
 const LivingBackground = React.memo(() => {
