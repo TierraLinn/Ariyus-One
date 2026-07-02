@@ -8,9 +8,8 @@ import { getStorage } from "firebase/storage";
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
+// Default fallback sandbox credentials
+const defaultFirebaseConfig = {
   apiKey: "AIzaSyDJHxitN732ejMhNX43J7SQfLg4voYr-gg",
   authDomain: "ariyus-one.firebaseapp.com",
   projectId: "ariyus-one",
@@ -18,6 +17,19 @@ const firebaseConfig = {
   messagingSenderId: "246150701825",
   appId: "1:246150701825:web:72f2a21b8eabe2976bc6fe"
 };
+
+// Check if a custom config has been entered by the developer in the settings panel
+const customConfigStr = localStorage.getItem('ariyus_firebase_config');
+let firebaseConfig = defaultFirebaseConfig;
+
+if (customConfigStr) {
+  try {
+    firebaseConfig = JSON.parse(customConfigStr);
+    console.log("Ariyus-One: Loaded custom production Firebase credentials.");
+  } catch (e) {
+    console.warn("Ariyus-One: Failed to parse custom Firebase config, falling back to sandbox.");
+  }
+}
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);

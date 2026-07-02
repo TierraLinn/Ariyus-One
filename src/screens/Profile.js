@@ -12,6 +12,10 @@ const Profile = ({ userData, handleSignOut, navigate }) => {
     return localStorage.getItem('ariyus_cosmic_theme') || 'Andromeda Teal';
   });
 
+  const [fbConfigText, setFbConfigText] = useState(() => {
+    return localStorage.getItem('ariyus_firebase_config') || '';
+  });
+
   const [recordings] = useState(() => {
     const saved = localStorage.getItem('ariyus_shared_recordings');
     if (saved) {
@@ -143,6 +147,72 @@ const Profile = ({ userData, handleSignOut, navigate }) => {
                 {t}
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* Firebase Production Integration Card */}
+        <div className="glass-panel" style={{ margin: 0 }}>
+          <h3 style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px', color: '#fff' }}>Google Cloud Firebase Sync</h3>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginBottom: '10px' }}>
+            Paste your Firebase configuration JSON here to sync logins and shared files to your own live production cloud databases.
+          </p>
+
+          <textarea
+            placeholder={`{\n  "apiKey": "AIza...",\n  "authDomain": "...",\n  "projectId": "..."\n}`}
+            value={fbConfigText}
+            onChange={(e) => setFbConfigText(e.target.value)}
+            style={{
+              width: '100%',
+              height: '110px',
+              fontFamily: 'monospace',
+              fontSize: '0.75rem',
+              background: 'rgba(0,0,0,0.3)',
+              border: '1px solid var(--glass-border)',
+              color: '#fff',
+              borderRadius: '6px',
+              padding: '8px',
+              marginBottom: '12px',
+              resize: 'none'
+            }}
+          />
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              className="glowing-button"
+              onClick={() => {
+                try {
+                  if (!fbConfigText.trim()) {
+                    alert("Please paste your Firebase configuration JSON.");
+                    return;
+                  }
+                  const parsed = JSON.parse(fbConfigText);
+                  if (!parsed.apiKey || !parsed.projectId) {
+                    alert("Invalid config. The JSON must contain at least 'apiKey' and 'projectId'.");
+                    return;
+                  }
+                  localStorage.setItem('ariyus_firebase_config', JSON.stringify(parsed));
+                  alert("Configuration saved successfully!\n\nReloading application to connect with your live Firestore cloud...");
+                  window.location.reload();
+                } catch (err) {
+                  alert(`JSON Parsing Error:\n\n${err.message}\n\nPlease check that your JSON syntax is valid (e.g. quote keys and string values).`);
+                }
+              }}
+              style={{ fontSize: '0.78rem', padding: '8px 12px', margin: 0, flex: 1 }}
+            >
+              💾 Connect Cloud
+            </button>
+            <button
+              className="glowing-button secondary"
+              onClick={() => {
+                localStorage.removeItem('ariyus_firebase_config');
+                setFbConfigText('');
+                alert("Reset complete. Reconnecting sandbox local databases...");
+                window.location.reload();
+              }}
+              style={{ fontSize: '0.78rem', padding: '8px 12px', margin: 0 }}
+            >
+              Reset
+            </button>
           </div>
         </div>
       </div>
