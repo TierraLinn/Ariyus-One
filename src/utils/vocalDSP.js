@@ -123,6 +123,15 @@ export const calculateVocalSignature = (pitchHistory, amplitudeHistory) => {
   const breath = Math.round(Math.max(50, Math.min(99, 100 - (shimmer * 150))));
   const hnr = Math.round(55 + (breath / 100) * 35);
   const centroid = vocalType === 'Baritone' ? 240 : (vocalType === 'Tenor' ? 300 : 410);
+  // Formant estimation baselines matching standard physiological vocal tract sizes
+  let formants = [520, 1540, 2480];
+  if (vocalType === 'Baritone') {
+    formants = [390, 1200, 2100];
+  } else if (vocalType === 'Tenor') {
+    formants = [450, 1350, 2280];
+  } else if (vocalType === 'Soprano') {
+    formants = [680, 1850, 2810];
+  }
 
   return {
     averagePitch,
@@ -133,7 +142,8 @@ export const calculateVocalSignature = (pitchHistory, amplitudeHistory) => {
     jitter: parseFloat(Math.max(0.1, Math.min(2.0, jitter * 10)).toFixed(2)),
     shimmer: parseFloat(Math.max(0.2, Math.min(3.0, shimmer * 8)).toFixed(2)),
     hnr,
-    centroid
+    centroid,
+    formants
   };
 };
 
@@ -231,3 +241,125 @@ export const getPlaybackRateForFrequency = (hz) => {
     default: return 1.0;
   }
 };
+
+/**
+ * Calculates the exact pitch shift ratio to convert a standard 440Hz song scale to target Hertz.
+ */
+export const getPitchShiftRatioForFrequency = (hz) => {
+  switch (hz) {
+    case 396: return 396 / 392.00; // Shift relative to G3
+    case 417: return 417 / 415.30; // Shift relative to G#3
+    case 432: return 432 / 440.00; // Shift standard A4 to Cosmic 432Hz
+    case 444: return 444 / 440.00; // Shift standard A4 to Davidic 444Hz
+    case 528: return 528 / 523.25; // Shift relative to C5
+    case 639: return 639 / 659.25; // Shift relative to E5
+    case 741: return 741 / 739.99; // Shift relative to F#5
+    case 852: return 852 / 880.00; // Shift relative to A5
+    case 963: return 963 / 987.77; // Shift relative to B5
+    default: return 1.0;
+  }
+};
+
+/**
+ * Creates a real-time time-domain circular-buffer pitch shifter node.
+ * This shifts pitch without modifying the timing/tempo of backing track playback.
+ */
+export const createPitchShifterNode = (audioContext, pitchRatio) => {
+  if (typeof audioContext.createScriptProcessor !== 'function') {
+    // Return a mock gain node if running in testing environment (e.g. jsdom)
+    return audioContext.createGain ? audioContext.createGain() : { connect: () => {}, disconnect: () => {} };
+  }
+  const bufferSize = 512;
+  const processor = audioContext.createScriptProcessor(bufferSize, 2, 2);
+  
+  const circularBufferLength = 8192;
+  const cBuffers = [new Float32Array(circularBufferLength), new Float32Array(circularBufferLength)];
+  let writeIdx = 0;
+  
+  processor.onaudioprocess = (e) => {
+    const inputL = e.inputBuffer.getChannelData(0);
+    const inputR = e.inputBuffer.getChannelData(1);
+    const outputL = e.outputBuffer.getChannelData(0);
+    const outputR = e.outputBuffer.getChannelData(1);
+    
+    const size = inputL.length;
+    
+    for (let i = 0; i < size; i++) {
+      // Write incoming samples to circular buffer
+      cBuffers[0][writeIdx] = inputL[i];
+      cBuffers[1][writeIdx] = inputR[i];
+      
+      // Calculate output using pitchRatio resampled delay time offsets
+      for (let ch = 0; ch < 2; ch++) {
+        const buf = cBuffers[ch];
+        
+        // Modulated read pointer to pitch shift without changing playback speed
+        const delayOffset = (i * (pitchRatio - 1)) % 1024;
+        const readPos = (writeIdx - 512 + delayOffset + buf.length) % buf.length;
+        
+        const idx = Math.floor(readPos);
+        const frac = readPos - idx;
+        const nextIdx = (idx + 1) % buf.length;
+        
+        // Linear interpolation
+        const sample = (1 - frac) * buf[idx] + frac * buf[nextIdx];
+        
+        if (ch === 0) outputL[i] = sample;
+        else outputR[i] = sample;
+      }
+      
+      writeIdx = (writeIdx + 1) % circularBufferLength;
+    }
+  };
+  
+  return processor;
+};
+
+/**
+ * Formant Peaks Tracker
+ * Extracts F1, F2, and F3 formants from frequency magnitude spectrum.
+ * @param {Uint8Array} freqDataArray - Frequency magnitude bins
+ * @param {number} sampleRate - sampling rate
+ * @returns {Array<number>} [F1, F2, F3] formant peaks in Hz
+ */
+export const getFormantsFromSpectrum = (freqDataArray, sampleRate) => {
+  const fftSize = freqDataArray.length * 2;
+  const binResolution = sampleRate / fftSize;
+
+  let f1 = 520;
+  let f2 = 1540;
+  let f3 = 2480;
+
+  let maxMagF1 = -1;
+  let maxMagF2 = -1;
+  let maxMagF3 = -1;
+
+  for (let i = 2; i < freqDataArray.length; i++) {
+    const freq = i * binResolution;
+    const mag = freqDataArray[i];
+
+    // Local peak detection
+    if (mag > freqDataArray[i - 1] && mag > freqDataArray[i + 1] && mag > 25) {
+      if (freq >= 300 && freq < 1000) {
+        if (mag > maxMagF1) {
+          maxMagF1 = mag;
+          f1 = freq;
+        }
+      } else if (freq >= 1000 && freq < 2400) {
+        if (mag > maxMagF2) {
+          maxMagF2 = mag;
+          f2 = freq;
+        }
+      } else if (freq >= 2400 && freq < 3800) {
+        if (mag > maxMagF3) {
+          maxMagF3 = mag;
+          f3 = freq;
+        }
+      }
+    }
+  }
+
+  // Round values for clean UI
+  return [Math.round(f1), Math.round(f2), Math.round(f3)];
+};
+

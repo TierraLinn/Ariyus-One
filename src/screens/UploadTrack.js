@@ -6,8 +6,18 @@ const UploadTrack = ({ navigate }) => {
   const [genre, setGenre] = useState('Pop');
   const [difficulty, setDifficulty] = useState('Medium');
   const [audioUrl, setAudioUrl] = useState('https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Happy%20Life.mp3');
+  const [fileName, setFileName] = useState('');
   const [lyrics, setLyrics] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setFileName(file.name);
+      const localUrl = URL.createObjectURL(file);
+      setAudioUrl(localUrl);
+    }
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -112,15 +122,49 @@ const UploadTrack = ({ navigate }) => {
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '5px', textTransform: 'uppercase' }}>Backing Instrumental URL</label>
-            <input 
-              type="url" 
-              value={audioUrl} 
-              onChange={e => setAudioUrl(e.target.value)} 
-              className="comment-input"
-              style={{ width: '100%', padding: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--glass-border)', color: '#fff', borderRadius: '8px' }}
-              required
-            />
+            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '5px', textTransform: 'uppercase' }}>Backing Instrumental Source</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(255, 255, 255, 0.02)', padding: '12px', borderRadius: '8px', border: '1px solid var(--glass-border)' }}>
+              <div>
+                <input 
+                  type="file" 
+                  accept="audio/*,video/mp4" 
+                  onChange={handleFileChange} 
+                  style={{ display: 'none' }} 
+                  id="local-file-input" 
+                />
+                <label 
+                  htmlFor="local-file-input" 
+                  className="glowing-button secondary" 
+                  style={{ cursor: 'pointer', padding: '8px 15px', display: 'inline-block', margin: 0, fontSize: '0.75rem', textTransform: 'uppercase' }}
+                >
+                  📁 Choose Local Audio File
+                </label>
+                {fileName && (
+                  <span style={{ marginLeft: '12px', fontSize: '0.75rem', color: 'var(--primary-glow)', fontWeight: 'bold' }}>
+                    Selected: {fileName}
+                  </span>
+                )}
+              </div>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '5px 0' }}>
+                <span style={{ height: '1px', background: 'rgba(255,255,255,0.1)', flexGrow: 1 }} />
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>or paste web URL</span>
+                <span style={{ height: '1px', background: 'rgba(255,255,255,0.1)', flexGrow: 1 }} />
+              </div>
+
+              <input 
+                type="text" 
+                placeholder="https://example.com/instrumental.mp3"
+                value={audioUrl} 
+                onChange={e => {
+                  setAudioUrl(e.target.value);
+                  setFileName('');
+                }} 
+                className="comment-input"
+                style={{ width: '100%', padding: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--glass-border)', color: '#fff', borderRadius: '8px' }}
+                required
+              />
+            </div>
           </div>
 
           <div>

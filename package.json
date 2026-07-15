@@ -11,14 +11,21 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-scripts": "5.0.1",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/ios": "^6.0.0",
+    "@capacitor/cli": "^6.0.0"
   },
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "deploy": "react-scripts build && npx firebase-tools deploy --only hosting"
+    "deploy": "react-scripts build && npx firebase-tools deploy --only hosting",
+    "cap:sync": "cap sync",
+    "cap:open:android": "cap open android",
+    "cap:open:ios": "cap open ios"
   },
   "eslintConfig": {
     "extends": [

@@ -11,7 +11,7 @@ const solfeggioFrequencies = [
   { freq: 540, note: '852Hz (Crown Magenta)', color: '#ff00c1' }
 ];
 
-const VocalArcade = ({ navigate }) => {
+const VocalArcade = ({ navigate, userData, setUserData }) => {
   const canvasRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
@@ -134,13 +134,15 @@ const VocalArcade = ({ navigate }) => {
           const coins = points * 15;
           setCoinsEarned(coins);
 
-          // Update profile coins
-          const localUser = localStorage.getItem('ariyus_local_user');
-          if (localUser) {
-            const parsed = JSON.parse(localUser);
-            parsed.coins = (parsed.coins || 0) + coins;
-            parsed.xp = (parsed.xp || 0) + (points * 10);
-            localStorage.setItem('ariyus_local_user', JSON.stringify(parsed));
+          // Update profile coins and XP, triggering auto-sync to Firestore
+          if (userData) {
+            const updatedProfile = {
+              ...userData,
+              coins: (userData.coins || 0) + coins,
+              xp: (userData.xp || 0) + (points * 10)
+            };
+            setUserData(updatedProfile);
+            localStorage.setItem('ariyus_local_user', JSON.stringify(updatedProfile));
           }
 
           localStorage.setItem('ariyus_arcade_completed', 'true');
@@ -152,7 +154,7 @@ const VocalArcade = ({ navigate }) => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isPlaying, gameOver]);
+  }, [isPlaying, gameOver, userData, setUserData]);
 
   // Main Canvas Rendering & Pitch loop
   useEffect(() => {

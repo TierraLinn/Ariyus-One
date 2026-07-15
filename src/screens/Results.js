@@ -53,12 +53,186 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userDa
   const [caption, setCaption] = useState('');
   const [showShareModal, setShowShareModal] = useState(false);
   const [isHighVibe, setIsHighVibe] = useState(true);
-  const [showAnalysis, setShowAnalysis] = useState(false);
   const [playVowel, setPlayVowel] = useState('---');
   const [playBiorhythm, setPlayBiorhythm] = useState('Delta (Rest)');
   
   const [autotuneStrength, setAutotuneStrength] = useState(currentRecording?.autotuneStrength || 50);
   const [currentLineIdx, setCurrentLineIdx] = useState(0);
+  const [isMixing, setIsMixing] = useState(false);
+
+  const fetchAndDecode = async (url, audioCtx) => {
+    try {
+      const res = await fetch(url);
+      const arrayBuffer = await res.arrayBuffer();
+      return await audioCtx.decodeAudioData(arrayBuffer);
+    } catch (e) {
+      console.warn("Failed to fetch/decode audio:", url, e);
+      return null;
+    }
+  };
+
+  const bufferToWav = (buffer) => {
+    const numOfChan = buffer.numberOfChannels,
+          length = buffer.length * numOfChan * 2 + 44,
+          bufferArr = new ArrayBuffer(length),
+          view = new DataView(bufferArr),
+          channels = [], 
+          sampleRate = buffer.sampleRate;
+    
+    let i, sample, offset = 0, pos = 0;
+
+    const setUint16 = (data) => {
+      view.setUint16(pos, data, true);
+      pos += 2;
+    };
+
+    const setUint32 = (data) => {
+      view.setUint32(pos, data, true);
+      pos += 4;
+    };
+
+    // RIFF chunk descriptor
+    setUint32(0x46464952); // "RIFF"
+    setUint32(length - 8); // file size - 8
+    setUint32(0x45564157); // "WAVE"
+
+    // fmt sub-chunk
+    setUint32(0x20746d66); // "fmt "
+    setUint32(16);         // format size
+    setUint16(1);          // linear PCM
+    setUint16(numOfChan);  // channels
+    setUint32(sampleRate); // sample rate
+    setUint32(sampleRate * 2 * numOfChan); // byte rate
+    setUint16(numOfChan * 2);              // block align
+    setUint16(16);                         // bits per sample
+
+    // data sub-chunk
+    setUint32(0x61746164); // "data"
+    setUint32(length - pos - 4);
+
+    // gather channels
+    for (i = 0; i < numOfChan; i++) {
+      channels.push(buffer.getChannelData(i));
+    }
+
+    // interleave channel arrays
+    while (pos < length) {
+      for (i = 0; i < numOfChan; i++) {
+        sample = Math.max(-1, Math.min(1, channels[i][offset])); // clamp sample
+        sample = (sample < 0 ? sample * 0x8000 : sample * 0x7FFF); // scale to 16-bit
+        view.setInt16(pos, sample, true);
+        pos += 2;
+      }
+      offset++;
+    }
+
+    return new Blob([bufferArr], { type: "audio/wav" });
+  };
+
+  const generateMixdownUrl = async () => {
+    setIsMixing(true);
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      const tempCtx = new AudioContext();
+      
+      const backingBuffer = await fetchAndDecode(selectedSong.audioUrl, tempCtx);
+      const voiceBuffer = await fetchAndDecode(playbackUrl, tempCtx);
+      
+      const sampleRate = 44100;
+      const duration = Math.max(
+        backingBuffer ? backingBuffer.duration : 0, 
+        voiceBuffer ? voiceBuffer.duration : 0
+      );
+      
+      if (duration === 0) {
+        setIsMixing(false);
+        return playbackUrl;
+      }
+
+      const OfflineContext = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      const offlineCtx = new OfflineContext(2, sampleRate * duration, sampleRate);
+      const pitchRatio = selectedFreq / 440;
+      
+      if (backingBuffer) {
+        const backingSource = offlineCtx.createBufferSource();
+        backingSource.buffer = backingBuffer;
+        backingSource.playbackRate.setValueAtTime(pitchRatio, 0); // Apply Solfeggio retuning
+        
+        const backingGain = offlineCtx.createGain();
+        backingGain.gain.setValueAtTime(trackVol / 100, 0);
+        backingSource.connect(backingGain);
+        backingGain.connect(offlineCtx.destination);
+        backingSource.start(0);
+      }
+      
+      if (voiceBuffer) {
+        const voiceSource = offlineCtx.createBufferSource();
+        voiceSource.buffer = voiceBuffer;
+        voiceSource.playbackRate.setValueAtTime(pitchRatio, 0); // Apply Solfeggio retuning
+        
+        const voiceGain = offlineCtx.createGain();
+        voiceGain.gain.setValueAtTime(voiceVol / 100, 0);
+        
+        const delayNode = offlineCtx.createDelay(1.0);
+        const delayTime = vocalDelay > 0 ? vocalDelay / 1000 : 0;
+        delayNode.delayTime.setValueAtTime(delayTime, 0);
+        
+        const panNode = offlineCtx.createStereoPanner ? offlineCtx.createStereoPanner() : offlineCtx.createGain();
+        if (offlineCtx.createStereoPanner) {
+          panNode.pan.setValueAtTime(voicePan, 0);
+        }
+        
+        voiceSource.connect(delayNode);
+        delayNode.connect(panNode);
+        panNode.connect(voiceGain);
+        voiceGain.connect(offlineCtx.destination);
+        
+        const startOffset = vocalDelay < 0 ? -vocalDelay / 1000 : 0;
+        voiceSource.start(0, startOffset);
+      }
+
+      // Mix duet partner vocal buffer if present
+      if (currentRecording.isDuet && currentRecording.partnerVocalUrl) {
+        try {
+          const partnerBuffer = await fetchAndDecode(currentRecording.partnerVocalUrl, tempCtx);
+          if (partnerBuffer) {
+            const partnerSource = offlineCtx.createBufferSource();
+            partnerSource.buffer = partnerBuffer;
+            partnerSource.playbackRate.setValueAtTime(pitchRatio, 0); // Apply Solfeggio retuning
+            
+            const partnerGain = offlineCtx.createGain();
+            partnerGain.gain.setValueAtTime(partnerVol / 100, 0);
+            
+            const partnerDelayNode = offlineCtx.createDelay(1.0);
+            partnerDelayNode.delayTime.setValueAtTime(0, 0);
+            
+            const partnerPanNode = offlineCtx.createStereoPanner ? offlineCtx.createStereoPanner() : offlineCtx.createGain();
+            if (offlineCtx.createStereoPanner) {
+              partnerPanNode.pan.setValueAtTime(partnerPan, 0);
+            }
+            
+            partnerSource.connect(partnerDelayNode);
+            partnerDelayNode.connect(partnerPanNode);
+            partnerPanNode.connect(partnerGain);
+            partnerGain.connect(offlineCtx.destination);
+            
+            partnerSource.start(0);
+          }
+        } catch (errDuet) {
+          console.warn("Failed to mix duet partner vocal buffer:", errDuet);
+        }
+      }
+      
+      const rendered = await offlineCtx.startRendering();
+      const wavBlob = bufferToWav(rendered);
+      setIsMixing(false);
+      return URL.createObjectURL(wavBlob);
+    } catch (e) {
+      console.warn("Mixdown generation failed, using dry vocal track:", e);
+      setIsMixing(false);
+      return playbackUrl;
+    }
+  };
 
   // Audio elements
   const voiceAudioRef = useRef(null);
@@ -103,6 +277,7 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userDa
   const vocalAnalyserRef = useRef(null);
   const formantCanvasRef = useRef(null);
   const vocalFrameCountRef = useRef(0);
+  const [dawTab, setDawTab] = useState('effects'); // 'effects', 'volume', 'pitch', 'analysis'
 
   const { selectedSong, score = 75, playbackUrl, pitchHistory = [] } = currentRecording || {};
   const lyricsLines = React.useMemo(() => {
@@ -241,15 +416,21 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userDa
   useEffect(() => {
     if (!currentRecording || !playbackUrl) return;
 
-    // Setup Audio element links
+    // Setup Audio element links with native Solfeggio pitch retuning
+    const pitchRatio = selectedFreq / 440;
+
     const voiceAudio = new Audio(playbackUrl);
     voiceAudio.crossOrigin = "anonymous";
     voiceAudio.loop = true;
+    voiceAudio.preservesPitch = false;
+    voiceAudio.playbackRate = pitchRatio;
     voiceAudioRef.current = voiceAudio;
 
     const trackAudio = new Audio(selectedSong?.audioUrl || 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Happy%20Life.mp3');
     trackAudio.crossOrigin = "anonymous";
     trackAudio.loop = true;
+    trackAudio.preservesPitch = false;
+    trackAudio.playbackRate = pitchRatio;
     trackAudioRef.current = trackAudio;
 
     let partnerAudio = null;
@@ -291,6 +472,8 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userDa
       partnerAudio = new Audio(currentRecording.partnerVocalUrl);
       partnerAudio.crossOrigin = "anonymous";
       partnerAudio.loop = true;
+      partnerAudio.preservesPitch = false;
+      partnerAudio.playbackRate = pitchRatio;
       partnerAudioRef.current = partnerAudio;
 
       const partnerSource = ctx.createMediaElementSource(partnerAudio);
@@ -301,12 +484,8 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userDa
       partnerDelayNodeRef.current = partnerDelayNode;
       partnerDelayNode.delayTime.setValueAtTime(0, t);
 
-      const pitchRatio = selectedFreq / 440;
-      const partnerPitchShifter = createPitchShifterNode(ctx, pitchRatio);
-
       partnerSource.connect(partnerDelayNode);
-      partnerDelayNode.connect(partnerPitchShifter);
-      partnerPitchShifter.connect(partnerPanNode);
+      partnerDelayNode.connect(partnerPanNode);
       partnerPanNode.connect(ctx.destination);
     }
 
@@ -317,9 +496,6 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userDa
     peakingNode.gain.setValueAtTime(isHighVibe ? 10.0 : 0.0, ctx.currentTime);
     peakingNode.Q.setValueAtTime(8.0, ctx.currentTime);
     peakingNodeRef.current = peakingNode;
-
-    const pitchRatio = selectedFreq / 440;
-    const trackPitchShifter = createPitchShifterNode(ctx, pitchRatio);
 
     // Autotune snap phase modulation nodes
     const autotuneNode = ctx.createDelay(1.0);
@@ -431,8 +607,7 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userDa
 
     // Backing track routing
     trackSource.connect(trackDelayNode);
-    trackDelayNode.connect(trackPitchShifter);
-    trackPitchShifter.connect(trackPanNode);
+    trackDelayNode.connect(trackPanNode);
     trackPanNode.connect(ctx.destination);
 
     return () => {
@@ -970,12 +1145,13 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userDa
     }
   };
 
-  const publishToFeed = () => {
+  const publishToFeed = async () => {
+    const finalUrl = await generateMixdownUrl();
     handleSaveAndShare({
       song: selectedSong,
       score,
       grade,
-      playbackUrl,
+      playbackUrl: finalUrl,
       vocalFilter: selectedFilter,
       isDuet: currentRecording?.isDuet || false,
       partnerName: currentRecording?.partnerName || '',
@@ -984,13 +1160,14 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userDa
     });
   };
 
-  const saveToDrafts = () => {
+  const saveToDrafts = async () => {
+    const finalUrl = await generateMixdownUrl();
     const newDraft = {
       id: 'draft_' + Date.now(),
       song: selectedSong,
       score,
       grade,
-      playbackUrl,
+      playbackUrl: finalUrl,
       vocalFilter: selectedFilter,
       createdAt: new Date().toLocaleDateString()
     };
@@ -1011,6 +1188,27 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userDa
 
   return (
     <div className="screen-wrapper">
+      {isMixing && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(7, 6, 48, 0.85)',
+          zIndex: 9999,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backdropFilter: 'blur(8px)'
+        }}>
+          <div className="glass-panel" style={{ textAlign: 'center', padding: '30px', maxWidth: '400px' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '15px', animation: 'float 3s infinite ease-in-out' }}>🧬</div>
+            <h3 style={{ color: 'var(--primary-glow)', margin: 0 }}>Synthesizing Master Mixdown</h3>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginTop: '10px', lineHeight: '1.4' }}>
+              Aligning vocals, compensating delay latency, and embedding frequency conversions into a high-fidelity WAV package...
+            </p>
+          </div>
+        </div>
+      )}
       <div className="floating-notes">🔱</div>
       <h1 className="suspended-title">Grading Chamber</h1>
 
@@ -1045,163 +1243,278 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userDa
 
         {/* Mixer Board */}
         <div className="glass-panel" style={{ margin: 0 }}>
-          <h3 style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', color: '#fff' }}>Resonant Mixing Console</h3>
+          <h3 style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', color: '#fff', marginBottom: '12px' }}>Resonant Mixing Console</h3>
           
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
-            {/* Voice Faders */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--primary-glow)', marginBottom: '5px' }}>
-                  <span>Voice Vol</span>
-                  <span>{voiceVol}%</span>
-                </div>
-                <input type="range" min="0" max="100" value={voiceVol} onChange={e => setVoiceVol(Number(e.target.value))} style={{ width: '100%' }} />
-              </div>
+          {/* Tab selectors */}
+          <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: '15px' }}>
+            {['effects', 'volume', 'pitch', 'analysis'].map(tab => (
+              <button
+                key={tab}
+                onClick={() => setDawTab(tab)}
+                style={{
+                  flex: 1,
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: dawTab === tab ? '2px solid var(--primary-glow)' : '2px solid transparent',
+                  color: dawTab === tab ? '#fff' : 'var(--text-dim)',
+                  padding: '10px 0',
+                  fontSize: '0.78rem',
+                  fontWeight: 'bold',
+                  textTransform: 'uppercase',
+                  cursor: 'pointer',
+                  fontFamily: '"Orbitron", sans-serif',
+                  transition: 'all 0.25s ease'
+                }}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
 
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--secondary-glow)', marginBottom: '5px' }}>
-                  <span>Backing Vol</span>
-                  <span>{trackVol}%</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            
+            {/* Panel 1: Effects */}
+            {dawTab === 'effects' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>Select Voice Filter Preset</span>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {['none', 'studio', 'reverb', 'echo', 'denoise'].map(filter => (
+                      <button
+                        key={filter}
+                        className={`daw-track-btn ${selectedFilter === filter ? 'active' : ''}`}
+                        onClick={() => setSelectedFilter(filter)}
+                        style={{ fontSize: '0.7rem', padding: '6px 12px', textTransform: 'capitalize', margin: 0, flex: '1 0 80px' }}
+                      >
+                        {filter}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <input type="range" min="0" max="100" value={trackVol} onChange={e => setTrackVol(Number(e.target.value))} style={{ width: '100%' }} />
-              </div>
-            </div>
 
-            {currentRecording?.isDuet && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', background: 'rgba(255, 0, 193, 0.03)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255, 0, 193, 0.08)' }}>
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--secondary-glow)', marginBottom: '5px', fontWeight: 'bold' }}>
-                    <span>👥 {currentRecording?.partnerName || 'Partner'} Vol</span>
-                    <span>{partnerVol}%</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--primary-glow)', marginBottom: '5px', fontWeight: 'bold' }}>
+                    <span>✨ Autotune Key Snap Strength</span>
+                    <span>{autotuneStrength}%</span>
                   </div>
-                  <input type="range" min="0" max="100" value={partnerVol} onChange={e => setPartnerVol(Number(e.target.value))} style={{ width: '100%' }} />
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="100" 
+                    value={autotuneStrength} 
+                    onChange={e => setAutotuneStrength(Number(e.target.value))} 
+                    style={{ width: '100%' }} 
+                  />
                 </div>
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--secondary-glow)', marginBottom: '5px', fontWeight: 'bold' }}>
-                    <span>👥 {currentRecording?.partnerName || 'Partner'} Pan</span>
-                    <span>{partnerPan === 0 ? 'Center' : (partnerPan < 0 ? `Left ${Math.abs(Math.round(partnerPan * 100))}%` : `Right ${Math.round(partnerPan * 100)}%`)}</span>
+
+                {/* AI Vocal Harmonizer Choir */}
+                <div style={{ background: 'rgba(178,0,255,0.03)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(178,0,255,0.1)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <strong style={{ fontSize: '0.78rem', color: 'var(--secondary-glow)' }}>👥 AI Vocal Harmonizer Choir</strong>
+                    <button
+                      className={`daw-track-btn ${isHarmonizer ? 'active' : ''}`}
+                      onClick={() => {
+                        setIsHarmonizer(!isHarmonizer);
+                        localStorage.setItem('ariyus_used_harmonizer', 'true');
+                      }}
+                      style={{ fontSize: '0.62rem', padding: '3px 8px', margin: 0 }}
+                    >
+                      {isHarmonizer ? 'ACTIVE' : 'BYPASS'}
+                    </button>
                   </div>
-                  <input type="range" min="-1" max="1" step="0.1" value={partnerPan} onChange={e => setPartnerPan(parseFloat(e.target.value))} style={{ width: '100%' }} />
+                  {isHarmonizer && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginTop: '10px' }}>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--primary-glow)', marginBottom: '3px' }}>
+                          <span>3rd Interval</span>
+                          <span>{thirdVol}%</span>
+                        </div>
+                        <input type="range" min="0" max="100" value={thirdVol} onChange={e => setThirdVol(Number(e.target.value))} style={{ width: '100%' }} />
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--secondary-glow)', marginBottom: '3px' }}>
+                          <span>5th Interval</span>
+                          <span>{fifthVol}%</span>
+                        </div>
+                        <input type="range" min="0" max="100" value={fifthVol} onChange={e => setFifthVol(Number(e.target.value))} style={{ width: '100%' }} />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--primary-glow)', marginBottom: '5px' }}>
-                <span>Vocal Pan</span>
-                <span>{voicePan === 0 ? 'Center' : (voicePan < 0 ? `Left ${Math.abs(Math.round(voicePan * 100))}%` : `Right ${Math.round(voicePan * 100)}%`)}</span>
-              </div>
-              <input type="range" min="-1" max="1" step="0.1" value={voicePan} onChange={e => setVoicePan(parseFloat(e.target.value))} style={{ width: '100%' }} />
-            </div>
-
-            {/* Vocal Sync Delay Compensation Slider */}
-            <div style={{ background: 'rgba(0,242,255,0.03)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(0,242,255,0.08)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--primary-glow)', marginBottom: '5px', fontWeight: 'bold' }}>
-                <span>🎧 Vocal Sync Delay compensation</span>
-                <span>{vocalDelay === 0 ? 'Aligned (0ms)' : (vocalDelay > 0 ? `Delayed (+${vocalDelay}ms)` : `Advanced (${vocalDelay}ms)`)}</span>
-              </div>
-              <input 
-                type="range" 
-                min="-300" 
-                max="300" 
-                step="5" 
-                value={vocalDelay} 
-                onChange={e => setVocalDelay(Number(e.target.value))} 
-                style={{ width: '100%' }} 
-              />
-              <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', display: 'block', marginTop: '4px' }}>
-                Drag to align track delay compensation when using Bluetooth or wired headphones.
-              </span>
-            </div>
-
-            {/* Post-FX filters select */}
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '10px' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Vocal Filter:</span>
-              {['none', 'studio', 'reverb', 'echo', 'denoise'].map(filter => (
-                <button
-                  key={filter}
-                  className={`daw-track-btn ${selectedFilter === filter ? 'active' : ''}`}
-                  onClick={() => setSelectedFilter(filter)}
-                  style={{ fontSize: '0.65rem', padding: '3px 8px', textTransform: 'capitalize', margin: 0 }}
-                >
-                  {filter}
-                </button>
-              ))}
-            </div>
-
-            {/* Autotune Strength Config */}
-            <div style={{ background: 'rgba(0,242,255,0.03)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(0,242,255,0.08)', marginTop: '12px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--primary-glow)', marginBottom: '5px', fontWeight: 'bold' }}>
-                <span>✨ Autotune Snap Strength</span>
-                <span>{autotuneStrength}%</span>
-              </div>
-              <input 
-                type="range" 
-                min="0" 
-                max="100" 
-                value={autotuneStrength} 
-                onChange={e => setAutotuneStrength(Number(e.target.value))} 
-                style={{ width: '100%' }} 
-              />
-              <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', display: 'block', marginTop: '4px' }}>
-                Snap vocal harmonic vibrations to the closest correct musical key.
-              </span>
-            </div>
-
-            {/* AI Vocal Harmonizer Choir controls */}
-            <div style={{ background: 'rgba(178,0,255,0.04)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(178,0,255,0.12)', marginTop: '12px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '0.78rem', color: 'var(--secondary-glow)', fontWeight: 'bold' }}>
-                  👥 AI Vocal Harmonizer Choir
-                </span>
-                <button
-                  className={`daw-track-btn ${isHarmonizer ? 'active' : ''}`}
-                  onClick={() => {
-                    setIsHarmonizer(!isHarmonizer);
-                    localStorage.setItem('ariyus_used_harmonizer', 'true');
-                  }}
-                  style={{ fontSize: '0.65rem', padding: '3px 8px', margin: 0 }}
-                >
-                  {isHarmonizer ? 'ON' : 'OFF'}
-                </button>
-              </div>
-              <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', display: 'block', marginBottom: '8px' }}>
-                Generate parallel resampled major-third (left) and perfect-fifth (right) backup harmonies.
-              </span>
-
-              {isHarmonizer && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' }}>
+            {/* Panel 2: Volume & Panning */}
+            {dawTab === 'volume' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--primary-glow)', marginBottom: '3px' }}>
-                      <span>Harmony 3rd</span>
-                      <span>{thirdVol}%</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--primary-glow)', marginBottom: '5px' }}>
+                      <span>Voice Vol</span>
+                      <span>{voiceVol}%</span>
                     </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={thirdVol}
-                      onChange={e => setThirdVol(Number(e.target.value))}
-                      style={{ width: '100%' }}
-                    />
+                    <input type="range" min="0" max="100" value={voiceVol} onChange={e => setVoiceVol(Number(e.target.value))} style={{ width: '100%' }} />
                   </div>
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--secondary-glow)', marginBottom: '3px' }}>
-                      <span>Harmony 5th</span>
-                      <span>{fifthVol}%</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--secondary-glow)', marginBottom: '5px' }}>
+                      <span>Backing Music Vol</span>
+                      <span>{trackVol}%</span>
                     </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={fifthVol}
-                      onChange={e => setFifthVol(Number(e.target.value))}
-                      style={{ width: '100%' }}
-                    />
+                    <input type="range" min="0" max="100" value={trackVol} onChange={e => setTrackVol(Number(e.target.value))} style={{ width: '100%' }} />
                   </div>
                 </div>
-              )}
-            </div>
+
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--primary-glow)', marginBottom: '5px' }}>
+                    <span>Vocal Stereo Panner</span>
+                    <span>{voicePan === 0 ? 'Center' : (voicePan < 0 ? `Left ${Math.abs(Math.round(voicePan * 100))}%` : `Right ${Math.round(voicePan * 100)}%`)}</span>
+                  </div>
+                  <input type="range" min="-1" max="1" step="0.1" value={voicePan} onChange={e => setVoicePan(parseFloat(e.target.value))} style={{ width: '100%' }} />
+                </div>
+
+                {currentRecording?.isDuet && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', background: 'rgba(255, 0, 193, 0.03)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255, 0, 193, 0.08)' }}>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--secondary-glow)', marginBottom: '5px', fontWeight: 'bold' }}>
+                        <span>👥 {currentRecording?.partnerName || 'Partner'} Vol</span>
+                        <span>{partnerVol}%</span>
+                      </div>
+                      <input type="range" min="0" max="100" value={partnerVol} onChange={e => setPartnerVol(Number(e.target.value))} style={{ width: '100%' }} />
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--secondary-glow)', marginBottom: '5px', fontWeight: 'bold' }}>
+                        <span>👥 Partner Pan</span>
+                        <span>{partnerPan === 0 ? 'Center' : (partnerPan < 0 ? `Left ${Math.abs(Math.round(partnerPan * 100))}%` : `Right ${Math.round(partnerPan * 100)}%`)}</span>
+                      </div>
+                      <input type="range" min="-1" max="1" step="0.1" value={partnerPan} onChange={e => setPartnerPan(parseFloat(e.target.value))} style={{ width: '100%' }} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Latency Sync Delay compensation slider */}
+                <div style={{ background: 'rgba(0,242,255,0.03)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(0,242,255,0.08)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--primary-glow)', marginBottom: '5px', fontWeight: 'bold' }}>
+                    <span>🎧 Vocal Sync Delay</span>
+                    <span>{vocalDelay === 0 ? 'Aligned (0ms)' : (vocalDelay > 0 ? `Delayed (+${vocalDelay}ms)` : `Advanced (${vocalDelay}ms)`)}</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="-300" 
+                    max="300" 
+                    step="5" 
+                    value={vocalDelay} 
+                    onChange={e => setVocalDelay(Number(e.target.value))} 
+                    style={{ width: '100%' }} 
+                  />
+                  <span style={{ fontSize: '0.62rem', color: 'var(--text-dim)', display: 'block', marginTop: '4px' }}>
+                    Manually shift recording timeline to align vocal and music tracks.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Panel 3: Pitch Retuning */}
+            {dawTab === 'pitch' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>Solfeggio Key Retuning Calibration</span>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {[
+                      { hz: 440, label: '440Hz (Standard)' },
+                      { hz: 432, label: '432Hz (Cosmic)' },
+                      { hz: 444, label: '444Hz (David)' },
+                      { hz: 528, label: '528Hz (Miracle)' },
+                      { hz: 741, label: '741Hz (Clarity)' }
+                    ].map(node => (
+                      <button
+                        key={node.hz}
+                        className={`daw-track-btn ${selectedFreq === node.hz ? 'active' : ''}`}
+                        onClick={() => setSelectedFreq(node.hz)}
+                        style={{ fontSize: '0.7rem', padding: '6px 12px', margin: 0, flex: '1 0 100px' }}
+                      >
+                        {node.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* High-Vibration Conversion Engine toggle */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(255, 0, 193, 0.03)', borderRadius: '8px', border: '1px solid rgba(255, 0, 193, 0.15)' }}>
+                  <div style={{ textAlign: 'left', marginRight: '10px' }}>
+                    <strong style={{ color: '#fff', fontSize: '0.85rem', display: 'block' }}>✨ High Vibration Conversion Engine</strong>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>Infuse Solfeggio peaking resonance directly into vocal signals.</span>
+                  </div>
+                  <button 
+                    className={`glowing-button secondary ${isHighVibe ? 'active' : ''}`}
+                    onClick={() => setIsHighVibe(!isHighVibe)}
+                    style={{ margin: 0, padding: '6px 12px', fontSize: '0.72rem', borderColor: isHighVibe ? 'var(--secondary-glow)' : '' }}
+                  >
+                    {isHighVibe ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Panel 4: AI Analysis */}
+            {dawTab === 'analysis' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
+                  <div style={{ background: 'rgba(0,0,0,0.18)', padding: '10px', borderRadius: '6px' }}>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Jitter</span>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#fff', margin: '4px 0' }}>
+                      {Math.round((100 - score) * 0.12 * 100) / 100}%
+                    </div>
+                  </div>
+
+                  <div style={{ background: 'rgba(0,0,0,0.18)', padding: '10px', borderRadius: '6px' }}>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Shimmer</span>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#fff', margin: '4px 0' }}>
+                      {Math.round((100 - score) * 0.18 * 100) / 100}%
+                    </div>
+                  </div>
+
+                  <div style={{ background: 'rgba(0,0,0,0.18)', padding: '10px', borderRadius: '6px' }}>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>HNR</span>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#fff', margin: '4px 0' }}>
+                      {Math.round(55 + (score / 100) * 35)} dB
+                    </div>
+                  </div>
+                </div>
+
+                {/* Formant canvas */}
+                <div style={{ background: 'rgba(0,0,0,0.22)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span style={{ fontSize: '0.72rem', color: '#fff', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
+                    🎙️ Real-Time Resonance Formant Spectrum
+                  </span>
+                  <canvas
+                    ref={formantCanvasRef}
+                    width="400"
+                    height="80"
+                    style={{
+                      width: '100%',
+                      height: '80px',
+                      background: '#06041e',
+                      borderRadius: '4px',
+                      border: '1px solid rgba(255,255,255,0.08)'
+                    }}
+                  />
+                </div>
+
+                {/* Formants stats card */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div style={{ background: 'rgba(112, 0, 255, 0.05)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(112, 0, 255, 0.12)' }}>
+                    <span style={{ fontSize: '0.62rem', color: 'var(--secondary-glow)', textTransform: 'uppercase', display: 'block' }}>Acoustic AI Voice State</span>
+                    <strong style={{ fontSize: '0.9rem', color: '#fff', display: 'block', marginTop: '2px' }}>{vocalAIState}</strong>
+                  </div>
+                  <div style={{ background: 'rgba(0, 242, 255, 0.05)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(0, 242, 255, 0.12)' }}>
+                    <span style={{ fontSize: '0.62rem', color: 'var(--primary-glow)', textTransform: 'uppercase', display: 'block' }}>Formants Resonance</span>
+                    <span style={{ fontSize: '0.72rem', color: '#fff', display: 'block', marginTop: '2px' }}>
+                      F1: <strong>{vocalFormants.f1} Hz</strong> | F2: <strong>{vocalFormants.f2} Hz</strong>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
           </div>
         </div>
@@ -1233,41 +1546,6 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userDa
 
       {/* Retuning & Sharing Portal */}
       <div className="glass-panel" style={{ marginTop: '20px' }}>
-        <h3>Solfeggio Retuning Calibration</h3>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '15px', marginTop: '10px' }}>
-          {[
-            { hz: 440, label: '440Hz (Standard)' },
-            { hz: 432, label: '432Hz (Cosmic)' },
-            { hz: 444, label: '444Hz (David)' },
-            { hz: 528, label: '528Hz (Miracle)' },
-            { hz: 741, label: '741Hz (Clarity)' }
-          ].map(node => (
-            <button
-              key={node.hz}
-              className={`daw-track-btn ${selectedFreq === node.hz ? 'active' : ''}`}
-              onClick={() => setSelectedFreq(node.hz)}
-              style={{ fontSize: '0.75rem', padding: '6px 12px', margin: 0 }}
-            >
-              {node.label}
-            </button>
-          ))}
-        </div>
-
-        {/* High-Vibration Conversion Engine toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(255, 0, 193, 0.03)', borderRadius: '8px', border: '1px solid rgba(255, 0, 193, 0.15)', margin: '15px 0' }}>
-          <div style={{ textAlign: 'left' }}>
-            <strong style={{ color: '#fff', fontSize: '0.9rem', display: 'block' }}>✨ High Vibration Conversion Engine</strong>
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Infuse target hertz peaking resonance directly into vocal wave frequencies.</span>
-          </div>
-          <button 
-            className={`glowing-button secondary ${isHighVibe ? 'active' : ''}`}
-            onClick={() => setIsHighVibe(!isHighVibe)}
-            style={{ margin: 0, padding: '6px 12px', fontSize: '0.75rem', borderColor: isHighVibe ? 'var(--secondary-glow)' : '' }}
-          >
-            {isHighVibe ? 'Active (ON)' : 'Bypass (OFF)'}
-          </button>
-        </div>
-
         <h3>Publish or Share</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '10px' }}>
           <input 
@@ -1359,133 +1637,7 @@ const ResultsChamber = ({ currentRecording, handleSaveAndShare, navigate, userDa
         )}
       </div>
 
-      {/* Collapsible Extensive Vocal Analysis Suite */}
-      <div className="glass-panel" style={{ marginTop: '20px' }}>
-        <button 
-          className="glowing-button secondary" 
-          onClick={() => setShowAnalysis(!showAnalysis)}
-          style={{ width: '100%', margin: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-        >
-          <span>🧬 {showAnalysis ? 'Collapse' : 'Expand'} Extensive Vocal Analysis Suite</span>
-          <span>{showAnalysis ? '▲' : '▼'}</span>
-        </button>
 
-        {showAnalysis && (
-          <div style={{ marginTop: '20px', animation: 'fadeIn 0.5s ease', textAlign: 'left' }}>
-            <h4 style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px', color: 'var(--primary-glow)', textTransform: 'uppercase', fontSize: '0.78rem', letterSpacing: '1px' }}>
-              Speech Biomarkers Matrix
-            </h4>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '12px' }}>
-              <div style={{ background: 'rgba(0,0,0,0.18)', padding: '10px', borderRadius: '6px' }}>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Jitter (Vocal Stability)</span>
-                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#fff', margin: '4px 0' }}>
-                  {Math.round((100 - score) * 0.12 * 100) / 100}%
-                </div>
-                <span style={{ fontSize: '0.62rem', color: 'var(--primary-glow)' }}>Micro-frequency variance ratio</span>
-              </div>
-
-              <div style={{ background: 'rgba(0,0,0,0.18)', padding: '10px', borderRadius: '6px' }}>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Shimmer (Amplitude Stability)</span>
-                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#fff', margin: '4px 0' }}>
-                  {Math.round((100 - score) * 0.18 * 100) / 100}%
-                </div>
-                <span style={{ fontSize: '0.62rem', color: 'var(--secondary-glow)' }}>Micro-intensity variance ratio</span>
-              </div>
-
-              <div style={{ background: 'rgba(0,0,0,0.18)', padding: '10px', borderRadius: '6px' }}>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Harmonic-to-Noise (Clarity)</span>
-                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#fff', margin: '4px 0' }}>
-                  {Math.round(55 + (score / 100) * 35)} dB
-                </div>
-                <span style={{ fontSize: '0.62rem', color: '#00ff87' }}>Spectral clarity resonance factor</span>
-              </div>
-
-              <div style={{ background: 'rgba(0,0,0,0.18)', padding: '10px', borderRadius: '6px' }}>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Vocal Octave Range</span>
-                <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#fff', margin: '6px 0' }}>
-                  Alto (G3 - D5)
-                </div>
-                <span style={{ fontSize: '0.62rem', color: 'var(--text-dim)' }}>Detected vocal range boundary</span>
-              </div>
-            </div>
-
-            {/* AI Formant Analyzer Visualizer Canvas */}
-            <div style={{ marginTop: '20px', background: 'rgba(0,0,0,0.22)', padding: '15px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <h4 style={{ margin: '0 0 10px 0', fontSize: '0.8rem', color: '#fff', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                🎙️ Real-Time Resonance Formant Spectrum
-              </h4>
-              <canvas
-                ref={formantCanvasRef}
-                width="600"
-                height="80"
-                style={{
-                  width: '100%',
-                  height: '80px',
-                  background: '#06041e',
-                  borderRadius: '4px',
-                  border: '1px solid rgba(255,255,255,0.08)'
-                }}
-              />
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', fontSize: '0.72rem', color: 'var(--text-dim)' }}>
-                <span>Low Frequencies (Bass)</span>
-                <span>High Frequencies (Treble)</span>
-              </div>
-            </div>
-
-            {/* AI Voice Resonance State Card */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '15px', marginTop: '15px' }}>
-              <div style={{ background: 'rgba(112, 0, 255, 0.05)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(112, 0, 255, 0.15)' }}>
-                <span style={{ fontSize: '0.68rem', color: 'var(--secondary-glow)', textTransform: 'uppercase', display: 'block' }}>Acoustic AI Voice State</span>
-                <strong style={{ fontSize: '1.1rem', color: '#fff', display: 'block', marginTop: '4px' }}>{vocalAIState}</strong>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', display: 'block', marginTop: '6px', lineHeight: '1.3' }}>
-                  Classified by real-time overtones, amplitude distribution, and F0 pitch matching stability.
-                </span>
-              </div>
-              <div style={{ background: 'rgba(0, 242, 255, 0.05)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(0, 242, 255, 0.15)' }}>
-                <span style={{ fontSize: '0.68rem', color: 'var(--primary-glow)', textTransform: 'uppercase', display: 'block' }}>Vowel Tract Formant Resonance</span>
-                <div style={{ display: 'flex', gap: '15px', marginTop: '5px' }}>
-                  <div>
-                    <span style={{ fontSize: '0.62rem', color: 'var(--text-dim)', display: 'block' }}>F1 (THROAT DEPTH)</span>
-                    <strong style={{ fontSize: '1.1rem', color: '#00ff87' }}>{vocalFormants.f1} Hz</strong>
-                  </div>
-                  <div>
-                    <span style={{ fontSize: '0.62rem', color: 'var(--text-dim)', display: 'block' }}>F2 (TONGUE PLACEMENT)</span>
-                    <strong style={{ fontSize: '1.1rem', color: 'var(--secondary-glow)' }}>{vocalFormants.f2} Hz</strong>
-                  </div>
-                </div>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', display: 'block', marginTop: '6px', lineHeight: '1.3' }}>
-                  F1 maps open throat projection; F2 maps front/back tongue articulation.
-                </span>
-              </div>
-            </div>
-
-            <h4 style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px', color: 'var(--secondary-glow)', textTransform: 'uppercase', fontSize: '0.78rem', letterSpacing: '1px', marginTop: '20px' }}>
-              Chakra Resonance Alignment
-            </h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
-              {[
-                { name: 'Crown Chakra (Violet)', color: '#b200ff', val: selectedFreq === 528 ? 90 : 70 },
-                { name: 'Third Eye Chakra (Indigo)', color: '#4b0082', val: selectedFreq === 741 ? 88 : 75 },
-                { name: 'Throat Chakra (Blue)', color: '#00f2ff', val: selectedFreq === 741 ? 98 : (selectedFreq === 432 ? 85 : 75) },
-                { name: 'Heart Chakra (Green)', color: '#00ff87', val: selectedFreq === 528 ? 96 : 80 },
-                { name: 'Solar Plexus Chakra (Yellow)', color: '#ffb700', val: selectedFreq === 432 ? 90 : 70 },
-                { name: 'Sacral Chakra (Orange)', color: '#ff7000', val: selectedFreq === 432 ? 95 : 72 },
-                { name: 'Root Chakra (Red)', color: '#ff003b', val: selectedFreq === 444 ? 92 : 68 }
-              ].map((chakra, idx) => (
-                <div key={idx}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '3px' }}>
-                    <span>{chakra.name}</span>
-                    <span style={{ color: chakra.color, fontWeight: 'bold' }}>{chakra.val}% Resonance</span>
-                  </div>
-                  <div style={{ height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', background: chakra.color, width: `${chakra.val}%`, borderRadius: '3px', boxShadow: `0 0 8px ${chakra.color}` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* Share platform overlay modal */}
       {showShareModal && (

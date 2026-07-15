@@ -11,7 +11,6 @@ import {
 // Import Screens
 import AuthPortal from './screens/AuthPortal';
 import VocalCalibration from './screens/VocalCalibration';
-import HomeNexus from './screens/Home';
 import SongLibrary from './screens/Sing';
 import UploadTrack from './screens/UploadTrack';
 import RecordingStudio from './screens/Recording';
@@ -19,9 +18,10 @@ import ResultsChamber from './screens/Results';
 import CommunityFeed from './screens/CommunityFeed';
 import Competitions from './screens/Competitions';
 import Profile from './screens/Profile';
-import DraftsList from './screens/DraftsList';
 import VocalCoach from './screens/VocalCoach';
 import VocalArcade from './screens/VocalArcade';
+import Workstation from './screens/Workstation';
+import SubscriptionPortal from './screens/SubscriptionPortal';
 
 // Helper to check if Firebase is configured with real credentials
 const isFirebaseConfigured = auth && 
@@ -66,6 +66,29 @@ function App() {
   const [error, setError] = useState(null);
   const [customAlert, setCustomAlert] = useState(null);
 
+  // Auto-sync userData changes to Firestore
+  useEffect(() => {
+    if (!userData || !user || !isFirebaseConfigured) return;
+    if (user.uid.startsWith('local_')) return;
+
+    const syncUserData = async () => {
+      try {
+        const userRef = doc(db, "users", user.uid);
+        await updateDoc(userRef, {
+          isCalibrated: userData.isCalibrated ?? false,
+          voiceSignature: userData.voiceSignature ?? null,
+          tier: userData.tier ?? 'Free',
+          xp: userData.xp ?? 120,
+          displayName: userData.displayName ?? 'Aura Singer'
+        });
+      } catch (err) {
+        console.warn("Auto-syncing userData to Firestore failed:", err);
+      }
+    };
+
+    syncUserData();
+  }, [userData, user]);
+
   useEffect(() => {
     window.alert = (message) => {
       setCustomAlert(message);
@@ -91,12 +114,12 @@ function App() {
         if (!parsed.isCalibrated) {
           navigate('Onboarding');
         } else {
-          navigate('Home');
+          navigate('SongLibrary'); // Default land in Song Library
         }
       } else {
         setUser(null);
         setUserData(null);
-        navigate('Auth');
+        navigate('SongLibrary'); // Guest browsing by default
       }
       setIsLoading(false);
       return;
@@ -113,7 +136,7 @@ function App() {
             if (!data.isCalibrated) {
               navigate('Onboarding');
             } else {
-              navigate('Home');
+              navigate('SongLibrary'); // Default land in Song Library
             }
           } else {
             const freshProfile = {
@@ -150,7 +173,7 @@ function App() {
         setUser(null);
         setUserData(null);
         setIsLoading(false);
-        navigate('Auth');
+        navigate('SongLibrary'); // Guest browsing by default
       }
     });
 
@@ -232,7 +255,7 @@ function App() {
       localStorage.removeItem('ariyus_local_user');
       setUser(null);
       setUserData(null);
-      navigate('Auth');
+      navigate('SongLibrary');
     }
   };
 
@@ -311,8 +334,8 @@ function App() {
       );
     }
 
-    // Direct redirection logic for uncalibrated profiles
-    if (userData && !userData.isCalibrated && screen !== 'Onboarding' && screen !== 'Auth') {
+    // Direct redirection logic for uncalibrated logged-in profiles
+    if (user && userData && !userData.isCalibrated && screen !== 'Onboarding' && screen !== 'Auth') {
       return <VocalCalibration {...props} />;
     }
 
@@ -321,8 +344,6 @@ function App() {
         return <AuthPortal {...props} />;
       case 'Onboarding':
         return <VocalCalibration {...props} />;
-      case 'Home':
-        return <HomeNexus {...props} />;
       case 'SongLibrary':
         return <SongLibrary {...props} />;
       case 'Upload':
@@ -337,14 +358,16 @@ function App() {
         return <Competitions {...props} />;
       case 'Profile':
         return <Profile {...props} />;
-      case 'Drafts':
-        return <DraftsList {...props} />;
       case 'VocalCoach':
         return <VocalCoach {...props} />;
       case 'VocalArcade':
         return <VocalArcade {...props} />;
+      case 'Workstation':
+        return <Workstation {...props} />;
+      case 'Subscription':
+        return <SubscriptionPortal {...props} />;
       default:
-        return user ? (userData?.isCalibrated ? <HomeNexus {...props} /> : <VocalCalibration {...props} />) : <AuthPortal {...props} />;
+        return <SongLibrary {...props} />;
     }
   };
 
@@ -366,18 +389,20 @@ function App() {
         </div>
       )}
 
-      {/* Floating Bottom Navigation Bar */}
-      {userData && userData.isCalibrated && screen !== 'Auth' && screen !== 'Loading' && (
+      {/* Floating Bottom Navigation Bar (Hidden during active recording or mixing) */}
+      {screen !== 'Auth' && screen !== 'Loading' && screen !== 'Recording' && screen !== 'Results' && screen !== 'Workstation' && (
         <nav className="floating-nav">
-          <button className={screen === 'Home' ? 'active' : ''} onClick={() => navigate('Home')}>Home</button>
           <button className={screen === 'SongLibrary' ? 'active' : ''} onClick={() => navigate('SongLibrary')}>Sing</button>
-          <button className={screen === 'CommunityFeed' ? 'active' : ''} onClick={() => navigate('CommunityFeed')}>Feed</button>
-          <button className={screen === 'Competitions' ? 'active' : ''} onClick={() => navigate('Competitions')}>Contests</button>
-          <button className={screen === 'Profile' ? 'active' : ''} onClick={() => navigate('Profile')}>Profile</button>
+          {user && <button className={screen === 'CommunityFeed' ? 'active' : ''} onClick={() => navigate('CommunityFeed')}>Square</button>}
+          {user && <button className={screen === 'Competitions' ? 'active' : ''} onClick={() => navigate('Competitions')}>Parties</button>}
+          {user && <button className={screen === 'Workstation' ? 'active' : ''} onClick={() => navigate('Workstation')}>Studio DAW</button>}
+          <button className={screen === 'Profile' || screen === 'Auth' ? 'active' : ''} onClick={() => navigate(user ? 'Profile' : 'Auth')}>
+            {user ? 'Me' : 'Login'}
+          </button>
         </nav>
       )}
       
-      {userData && userData.isCalibrated && screen !== 'Auth' && screen !== 'Loading' && <div className="nav-bottom-buffer" />}
+      {screen !== 'Auth' && screen !== 'Loading' && screen !== 'Recording' && screen !== 'Results' && screen !== 'Workstation' && <div className="nav-bottom-buffer" />}
     </div>
   );
 }
